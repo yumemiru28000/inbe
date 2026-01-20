@@ -1,29 +1,38 @@
 import { db } from "./firebase.js";
-import { ref, onValue } from "https://www.gstatic.com/firebasejs/12.8.0/firebase-database.js";
+import { ref, onValue, set } from "https://www.gstatic.com/firebasejs/12.8.0/firebase-database.js";
 import { PATHS } from "./paths.js";
 import { startHostLoopIfNeeded } from "./hostSync.js";
 import { createRenderer } from "./game.js";
 
 const canvas = document.querySelector("#game");
-const renderer = createRenderer(canvas);
+const hud = document.querySelector("#hud");
+const renderer = createRenderer(canvas, hud);
 
 export function bindWatchAndGameCanvas({ uid }) {
-  // セッション監視 → ホストなら同期ループ開始
-  onValue(ref(db, PATHS.sessionCurrent), (snap) => {
+  onValue(ref(db, PATHS.sessionCurrent), async (snap) => {
     const s = snap.val();
     startHostLoopIfNeeded({ uid, session: s });
+
+    // playing中にプレイヤー/観戦者はプレイ画面しか見ない想定なので状態を更新
+    if (s?.state === "playing") {
+      const isPlayer = s.p1Uid === uid || s.p2Uid === uid;
+      await set(ref(db, PATHS.sessionClientState(uid)), isPlayer ? "playing" : "watching");
+    } else if (!s || s.state === "idle") {
+      await set(ref(db, PATHS.sessionClientState(uid)), "lobby");
+    } else if (s.state === "resetting") {
+      // いったんロビー扱い（リセット完了待ち）
+      await set(ref(db, PATHS.sessionClientState(uid)), "lobby");
+    }
   });
 
-  // game状態監視 → 描画
   onValue(ref(db, PATHS.sessionGame), (snap) => {
     const g = snap.val();
     if (!g) {
       renderer.drawIdle("ロビー / 観戦待機中");
       return;
     }
-    renderer.drawState(g);
+    renderer.drawState(g, uid);
   });
 
-  // 初期表示
   renderer.drawIdle("ロビー");
 }

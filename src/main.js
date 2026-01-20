@@ -1,9 +1,10 @@
 import { auth, db } from "./firebase.js";
 import { signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/12.8.0/firebase-auth.js";
-import { ref, onValue, set, serverTimestamp, onDisconnect } from "https://www.gstatic.com/firebasejs/12.8.0/firebase-database.js";
+import { ref, onValue, set, get, serverTimestamp, onDisconnect } from "https://www.gstatic.com/firebasejs/12.8.0/firebase-database.js";
 import { PATHS } from "./paths.js";
 import { bindLobby } from "./lobby.js";
 import { bindWatchAndGameCanvas } from "./watch.js";
+import { bindInputSender } from "./input.js";
 
 const el = {
   me: document.querySelector("#me"),
@@ -13,6 +14,7 @@ const el = {
   leaderboard: document.querySelector("#leaderboard"),
   nameInput: document.querySelector("#nameInput"),
   saveNameBtn: document.querySelector("#saveNameBtn"),
+  nameHint: document.querySelector("#nameHint"),
 };
 
 async function ensureAuth() {
@@ -45,6 +47,12 @@ function bindLeaderboard() {
   });
 }
 
+async function getMyName(uid) {
+  const snap = await get(ref(db, PATHS.names(uid)));
+  const v = snap.val();
+  return (typeof v === "string" && v.trim()) ? v.trim() : "";
+}
+
 function bindName(uid) {
   const nameRef = ref(db, PATHS.names(uid));
   onValue(nameRef, (snap) => {
@@ -57,6 +65,12 @@ function bindName(uid) {
   };
 }
 
+function bindSessionDebug() {
+  onValue(ref(db, PATHS.sessionCurrent), (snap) => {
+    el.sessionDebug.textContent = JSON.stringify(snap.val(), null, 2);
+  });
+}
+
 onAuthStateChanged(auth, async (user) => {
   if (!user) return;
   const uid = user.uid;
@@ -65,17 +79,24 @@ onAuthStateChanged(auth, async (user) => {
   bindPresence(uid);
   bindName(uid);
   bindLeaderboard();
+  bindSessionDebug();
+
+  // 名前必須の案内
+  const myName = await getMyName(uid);
+  el.nameHint.textContent = myName ? `保存済み: ${myName}` : "名前を保存するとロビー操作できます";
+
+  // clientState 初期
+  await set(ref(db, PATHS.sessionClientState(uid)), "name");
+  onDisconnect(ref(db, PATHS.sessionClientState(uid))).set("offline");
+
+  // 入力送信（playingの時だけ有効化するのは input.js 側で制御）
+  bindInputSender({ uid });
 
   // ロビー機能
-  bindLobby({ uid });
+  bindLobby({ uid, getMyName: () => getMyName(uid) });
 
-  // 観戦＆ゲーム描画（playing中は常に描画できるように）
+  // 観戦＆描画
   bindWatchAndGameCanvas({ uid });
-
-  // セッションデバッグ表示
-  onValue(ref(db, PATHS.sessionCurrent), (snap) => {
-    el.sessionDebug.textContent = JSON.stringify(snap.val(), null, 2);
-  });
 });
 
 ensureAuth();

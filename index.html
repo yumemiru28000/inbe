@@ -10,11 +10,15 @@
     #app { display: grid; grid-template-rows: auto 1fr; height: 100%; }
     header { padding: 10px 12px; display:flex; gap:12px; align-items:center; border-bottom:1px solid #1f2a3a; }
     header b { font-weight: 700; }
+    #statusLine { margin-left:auto; color:#a8b3c7; }
+
     #main { display:grid; grid-template-columns: 360px 1fr; min-height:0; }
     #left { border-right:1px solid #1f2a3a; padding:12px; overflow:auto; }
     #right { min-height:0; display:flex; flex-direction:column; }
-    #canvasWrap { flex: 1; min-height: 0; display:flex; }
+
+    #canvasWrap { flex: 1; min-height: 0; display:flex; position:relative; }
     canvas { width: 100%; height: 100%; display:block; background: #05070b; }
+
     .card { border:1px solid #1f2a3a; border-radius:10px; padding:10px; margin-bottom:10px; background:#0e1420; }
     .row { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
     button { background:#2b69ff; color:white; border:0; padding:8px 10px; border-radius:8px; cursor:pointer; font-weight:600; }
@@ -22,10 +26,27 @@
     button.danger { background:#b42318; }
     button[disabled] { opacity:.45; cursor:not-allowed; }
     input { width: 100%; box-sizing:border-box; padding:8px 10px; border-radius:8px; border:1px solid #26344a; background:#0b1220; color:#e8eefc; }
+
     small.mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; color:#a8b3c7; }
-    #statusLine { margin-left:auto; color:#a8b3c7; }
-    #overlay { position:absolute; inset:0; display:none; align-items:center; justify-content:center; background: rgba(0,0,0,.55); }
-    #overlay > div { width:min(520px, 92vw); }
+
+    /* playing中は左を隠してキャンバスを大きく */
+    body.playing #main { grid-template-columns: 0px 1fr; }
+    body.playing #left { display:none; }
+    body.playing #rightTopBar { display:none; }
+
+    /* HUD */
+    #hud {
+      position:absolute; left:10px; top:10px;
+      background: rgba(10,14,22,.72);
+      border:1px solid #1f2a3a;
+      padding:8px 10px;
+      border-radius:10px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+      color:#e8eefc;
+      min-width: 220px;
+    }
+    #ann { position:absolute; inset:0; display:none; align-items:center; justify-content:center; background: rgba(0,0,0,.60); }
+    #ann .card { width:min(520px, 92vw); }
   </style>
 </head>
 <body>
@@ -39,11 +60,12 @@
     <div id="main">
       <div id="left">
         <div class="card">
-          <div style="font-weight:700; margin-bottom:6px;">名前</div>
+          <div style="font-weight:700; margin-bottom:6px;">名前（最初に必須）</div>
           <input id="nameInput" placeholder="表示名" maxlength="20" />
           <div class="row" style="margin-top:8px;">
             <button id="saveNameBtn">保存</button>
           </div>
+          <div style="margin-top:6px; color:#a8b3c7;" id="nameHint"></div>
         </div>
 
         <div class="card">
@@ -68,27 +90,29 @@
       </div>
 
       <div id="right">
-        <div style="padding:10px 12px; border-bottom:1px solid #1f2a3a;">
+        <div id="rightTopBar" style="padding:10px 12px; border-bottom:1px solid #1f2a3a;">
           <div class="row">
             <div><b id="screenTitle">ロビー</b></div>
             <div id="screenSub" style="color:#a8b3c7;"></div>
             <div style="margin-left:auto" class="row">
               <button id="readyBtn" class="secondary" style="display:none;">準備完了</button>
+              <button id="retireBtn" class="danger" style="display:none;">ゲームリアタイア</button>
               <button id="leaveBtn" class="danger" style="display:none;">離脱</button>
             </div>
           </div>
         </div>
 
-        <div id="canvasWrap" style="position:relative;">
+        <div id="canvasWrap">
           <canvas id="game"></canvas>
-          <div id="overlay">
+          <div id="hud" style="display:none;">
+            <div id="hudLine1"></div>
+            <div id="hudLine2" style="margin-top:4px;"></div>
+          </div>
+
+          <div id="ann">
             <div class="card">
-              <div style="font-weight:800; margin-bottom:6px;" id="overlayTitle"></div>
-              <div style="color:#a8b3c7; margin-bottom:10px;" id="overlayBody"></div>
-              <div class="row" style="justify-content:flex-end;">
-                <button id="overlayNo" class="secondary">いいえ</button>
-                <button id="overlayYes">はい</button>
-              </div>
+              <div style="font-weight:800; margin-bottom:6px;" id="annTitle"></div>
+              <div style="color:#a8b3c7;" id="annBody"></div>
             </div>
           </div>
         </div>

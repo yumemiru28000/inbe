@@ -881,7 +881,7 @@ function stopBGM() {
   }
 
   // ---------------- Game simulation (host) ----------------
-  const WAVE_DUR = [2, 2, 1, 10];
+  const WAVE_DUR = [2, 2, 3, 100];
   const SCORE = { A: 60, B: 120, C: 200, D: 0, E: 300, BOSS_HIT: 10, BOSS_KILL: 5000 };
   const ENEMY = {
     A: { firePerSec: 0.36, bulletSpeed: 0.28, moveSpeed: 0.06 },
@@ -1316,9 +1316,10 @@ function collidePlayerBulletsToEnemies() {
           if (boss.shieldLeft>0) continue;
           boss.hp -= 1;
           const p=st.players[b.ownerUid]; if (p) p.score += SCORE.BOSS_HIT;
-          if (boss.hp<=0) boss.alive = false;
-            st.gameOver = true; // ★これを追加
-        }
+      if (boss.hp<=0) {
+  boss.alive = false;
+  st.gameOver = true;
+}
       }
     }
 
@@ -1333,114 +1334,108 @@ function collidePlayerBulletsToEnemies() {
     }
 
     function isAllDead() { return Object.values(st.players).every(p=>!p.alive); }
-
 function step(dt) {
-  if (st.gameOver) return; // ★最初に追加！
   st.tick++;
 
-  // ★Wave待機中：カウントだけ減らす（ゲーム進行は止める）
-  if (st.waveDelayLeft > 0) {
-    st.waveDelayLeft = Math.max(0, st.waveDelayLeft - dt);
-    // 入力でプレイヤー位置だけ動かすかは好み。ここでは止める（完全停止）
-    return;
-  }
-
-  st.elapsed += dt;
-
-  const t = st.elapsed;
-  const tW1=WAVE_DUR[0], tW2=tW1+WAVE_DUR[1], tW3=tW2+WAVE_DUR[2];
-
-  let newWave = st.wave;
-  if (t < tW1) newWave=1;
-  else if (t < tW2) newWave=2;
-  else if (t < tW3) newWave=3;
-  else newWave=4;
-
-  // ★ウェーブ切り替え時にBGM再生
-  if (newWave !== st.wave) { 
-    st.wave = newWave; 
-    if (typeof playBGMforWave === "function") playBGMforWave(newWave); // ←BGM再生
-    spawnWave(newWave); 
-    return; 
-  }
-
-  // ------------------- ここから追加：敵をWave中ずっと出し続ける -------------------
-// --- ここから追加する！ ---
-// Wave1,2,3だけで雑魚出し
-if (st.wave <= 3) {
-  // 雑魚スポーンロジックそのまま
-  let interval = st.wave === 1 ? 0.38 : st.wave === 2 ? 0.31 : 0.24;
-  let batch = st.wave === 1 ? 1 : st.wave === 2 ? 1 : 1; // 好きな数
-  st.enemySpawnAcc += dt;
-  while (st.enemySpawnAcc >= interval) {
-    st.enemySpawnAcc -= interval;
-    for (let i = 0; i < batch; ++i) {
-      const x = 0.08 + st.rng() * 0.84;
-      const y = -0.3 - st.rng() * 0.08;
-      st.enemies.push({
-        id: `en_${st.nextEnemyId++}`,
-        type: "A",
-        baseX: x, baseY: y, x: x, y: y,
-        alive: true, fireAcc: 0
-      });
+  // ゲーム進行部分のみ「ゲームオーバーで止める」
+  if (!st.gameOver) {
+    // ★Wave待機中：カウントだけ減らす（ゲーム進行は止める）
+    if (st.waveDelayLeft > 0) {
+      st.waveDelayLeft = Math.max(0, st.waveDelayLeft - dt);
+      // 入力でプレイヤー位��だけ動かすかは好み。ここでは止める（完全停止）
+      return;
     }
-  }
-}
 
-// --- ボス戦（wave4）専用で雑魚は絶対生成しない ---
-// 既存の if (st.wave>3) { ...updateBoss... } はそのまま
-  // --------------------------------------------------------------------------
+    st.elapsed += dt;
 
-  for (const puid in st.players) {
-    const p=st.players[puid];
-    if (!p.alive) continue;
-    const inp = lastInputs?.[puid] || {};
-    const speed=0.45;
-    if (inp.left) p.x -= speed*dt;
-    if (inp.right) p.x += speed*dt;
-    p.x = clamp(p.x, 0.05, 0.95);
+    const t = st.elapsed;
+    const tW1=WAVE_DUR[0], tW2=tW1+WAVE_DUR[1], tW3=tW2+WAVE_DUR[2];
 
-    if (inp.shoot) {
-      p.fireAcc += FIRE_RATE * dt;
-      while (p.fireAcc >= 1) {
-        p.fireAcc -= 1;
-        st.playerBullets.push({ id:`pb_${st.nextPBulletId++}`, x:p.x, y:p.y-0.03, ownerUid:puid, dead:false });
-        // ★弾発射音
-        if (typeof playSE === "function") playSE("pi");
+    let newWave = st.wave;
+    if (t < tW1) newWave=1;
+    else if (t < tW2) newWave=2;
+    else if (t < tW3) newWave=3;
+    else newWave=4;
+
+    // ★ウェーブ切り替え時にBGM再生
+    if (newWave !== st.wave) { 
+      st.wave = newWave; 
+      if (typeof playBGMforWave === "function") playBGMforWave(newWave);
+      spawnWave(newWave); 
+      return; 
+    }
+
+    // --- 雑魚スポーン ---
+    if (st.wave <= 3) {
+      let interval = st.wave === 1 ? 0.38 : st.wave === 2 ? 0.31 : 0.24;
+      let batch = st.wave === 1 ? 1 : st.wave === 2 ? 1 : 1;
+      st.enemySpawnAcc += dt;
+      while (st.enemySpawnAcc >= interval) {
+        st.enemySpawnAcc -= interval;
+        for (let i = 0; i < batch; ++i) {
+          const x = 0.08 + st.rng() * 0.84;
+          const y = -0.3 - st.rng() * 0.08;
+          st.enemies.push({
+            id: `en_${st.nextEnemyId++}`,
+            type: "A",
+            baseX: x, baseY: y, x: x, y: y,
+            alive: true, fireAcc: 0
+          });
+        }
       }
+    }
+
+    for (const puid in st.players) {
+      const p=st.players[puid];
+      if (!p.alive) continue;
+      const inp = lastInputs?.[puid] || {};
+      const speed=0.45;
+      if (inp.left) p.x -= speed*dt;
+      if (inp.right) p.x += speed*dt;
+      p.x = clamp(p.x, 0.05, 0.95);
+
+      if (inp.shoot) {
+        p.fireAcc += FIRE_RATE * dt;
+        while (p.fireAcc >= 1) {
+          p.fireAcc -= 1;
+          st.playerBullets.push({ id:`pb_${st.nextPBulletId++}`, x:p.x, y:p.y-0.03, ownerUid:puid, dead:false });
+          if (typeof playSE === "function") playSE("pi");
+        }
+      } else {
+        p.fireAcc = 0;
+      }
+    }
+
+    if (st.wave<=3) {
+      updateFormation(dt);
+      updateE(dt);
+      updateHazards(dt);
+      enemyFire(dt);
+      spawnHazards(dt);
+      spawnEIfNeeded(dt);
+
+      moveEnemyBullets(dt);
+      collideEnemyBulletsToPlayers();
+      collideHazardsToPlayers();
+      collidePlayerBulletsToEnemies();
     } else {
-      p.fireAcc = 0;
+      const wave4Elapsed = Math.max(0, st.elapsed - tW3);
+      if ((!st.boss || !st.boss.alive) && !isAllDead()) {
+        st._bossRespawnAcc += dt;
+        if (st._bossRespawnAcc >= 3.0) { st._bossRespawnAcc = 0; spawnBoss(); }
+      } else {
+        st._bossRespawnAcc = 0;
+      }
+
+      updateBoss(dt, wave4Elapsed);
+      moveEnemyBullets(dt);
+      collideEnemyBulletsToPlayers();
+      collideBossToPlayers();
+      collidePlayerBulletsToBoss();
     }
   }
 
-  if (st.wave<=3) {
-    updateFormation(dt);
-    updateE(dt);
-    updateHazards(dt);
-    enemyFire(dt);
-    spawnHazards(dt);
-    spawnEIfNeeded(dt);
-
-    moveEnemyBullets(dt);
-    collideEnemyBulletsToPlayers();
-    collideHazardsToPlayers();
-    collidePlayerBulletsToEnemies();
-  } else {
-    const wave4Elapsed = Math.max(0, st.elapsed - tW3);
-    if ((!st.boss || !st.boss.alive) && !isAllDead()) {
-      st._bossRespawnAcc += dt;
-      if (st._bossRespawnAcc >= 3.0) { st._bossRespawnAcc = 0; spawnBoss(); }
-    } else {
-      st._bossRespawnAcc = 0;
-    }
-
-    updateBoss(dt, wave4Elapsed);
-    moveEnemyBullets(dt);
-    collideEnemyBulletsToPlayers();
-    collideBossToPlayers();
-    collidePlayerBulletsToBoss();
-  }
-
+  // ← ここ以降はif(gameOver)でも常に処理！
   movePlayerBullets(dt);
   st.playerBullets = st.playerBullets.filter(b=>!b.dead);
   cleanupOutOfBounds();
@@ -1760,11 +1755,11 @@ if (st.wave <= 3) {
         sim.applyInputs(inputs);
         sim.step(intervalMs / 1000);
 
-         if (sim.isAllDead() || sim.gameOver) {
-      await update(ref(db, PATHS.room(roomId)), { state: "finished", finishedReason: "boss_killed", updatedAt: Date.now() });
-      await update(ref(db, PATHS.roomIndex(roomId)), { state: "finished" });
-      return;
-    }
+        if (sim.isAllDead() || sim.gameOver) {
+  await update(ref(db, PATHS.room(roomId)), { state: "finished", finishedReason: "boss_killed", updatedAt: Date.now() });
+  await update(ref(db, PATHS.roomIndex(roomId)), { state: "finished" });
+  return;
+}
 
         await set(ref(db, PATHS.roomGame(roomId)), sim.snapshot());
       }, intervalMs);

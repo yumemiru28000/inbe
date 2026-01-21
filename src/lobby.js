@@ -10,72 +10,106 @@ const ui = {
   multiBtn: document.querySelector("#multiBtn"),
   watchBtn: document.querySelector("#watchBtn"),
   readyBtn: document.querySelector("#readyBtn"),
+  retireBtn: document.querySelector("#retireBtn"),
   leaveBtn: document.querySelector("#leaveBtn"),
   playHint: document.querySelector("#playHint"),
   statusLine: document.querySelector("#statusLine"),
   screenTitle: document.querySelector("#screenTitle"),
   screenSub: document.querySelector("#screenSub"),
+  ann: document.querySelector("#ann"),
+  annTitle: document.querySelector("#annTitle"),
+  annBody: document.querySelector("#annBody"),
 };
 
 function uuidShort() {
   return Math.random().toString(16).slice(2, 10);
 }
 
-export function bindLobby({ uid }) {
+function showAnn(title, body) {
+  ui.annTitle.textContent = title;
+  ui.annBody.textContent = body;
+  ui.ann.style.display = "flex";
+}
+function hideAnn() {
+  ui.ann.style.display = "none";
+}
+
+export function bindLobby({ uid, getMyName }) {
   const sessionRef = ref(db, PATHS.sessionCurrent);
 
   // UI状態更新
-  onValue(sessionRef, (snap) => {
+  onValue(sessionRef, async (snap) => {
     const s = snap.val() || { state: "idle" };
     const state = s.state ?? "idle";
 
-    const busy = state !== "idle";
-    ui.soloBtn.disabled = busy;
-    ui.multiBtn.disabled = busy;
+    // 名前必須：未保存ならプレイ系を無効化
+    const myName = await getMyName();
+    const nameOk = !!myName;
 
-    if (!busy) {
+    const busy = state !== "idle";
+    ui.soloBtn.disabled = !nameOk || busy;
+    ui.multiBtn.disabled = !nameOk || busy;
+
+    if (!nameOk) {
+      ui.playHint.textContent = "名前を保存してください（保存後にプレイ選択できます）";
+    } else if (!busy) {
       ui.playHint.textContent = "プレイ可能です（ソロ / マルチ）";
-      ui.statusLine.textContent = "idle";
     } else {
       ui.playHint.textContent = "現在他の方がプレイ中です。観戦のみ可能です。";
-      ui.statusLine.textContent = `${state}${s.mode ? ` (${s.mode})` : ""}`;
     }
 
-    // 準備画面でのボタン表示制御（参加者だけ）
+    ui.statusLine.textContent = `${state}${s.mode ? ` (${s.mode})` : ""}`;
+
+    // playing中は画面をプレイ専用に
+    document.body.classList.toggle("playing", state === "playing");
+
+    // ボタン表示制御
     const isPlayer = s.p1Uid === uid || s.p2Uid === uid;
-    const isPreparing = state === "preparing" || state === "recruiting";
+    const isHost = s.hostUid === uid;
+
     ui.readyBtn.style.display = (isPlayer && state === "preparing") ? "" : "none";
     ui.leaveBtn.style.display = (isPlayer && (state === "recruiting" || state === "preparing")) ? "" : "none";
+    ui.retireBtn.style.display = (isHost && state === "playing" && s.mode === "multi") ? "" : "none";
 
+    // スクリーン表示文言
     if (state === "idle") {
       ui.screenTitle.textContent = "ロビー";
       ui.screenSub.textContent = "";
+      hideAnn();
     } else if (state === "recruiting") {
       ui.screenTitle.textContent = "準備中";
       ui.screenSub.textContent = "マルチ参加者を募集しています";
+      hideAnn();
     } else if (state === "preparing") {
       ui.screenTitle.textContent = "準備中";
       ui.screenSub.textContent = "準備完了を押すと開始します";
+      hideAnn();
     } else if (state === "playing") {
       ui.screenTitle.textContent = "プレイ中";
-      ui.screenSub.textContent = "観戦可能";
+      ui.screenSub.textContent = "A/D移動・Space発射";
+      hideAnn();
+    } else if (state === "resetting") {
+      ui.screenTitle.textContent = "リセット中";
+      ui.screenSub.textContent = "";
+      showAnn("データをリセットします", "全員がロビーに戻るまで待ってください");
     } else if (state === "finished") {
       ui.screenTitle.textContent = "終了";
-      ui.screenSub.textContent = "結果処理中";
+      ui.screenSub.textContent = "ロビーに戻ります";
+      showAnn("ゲーム終了", "ロビーに戻っています…");
     }
   });
 
-  // 観戦ボタンは常に押せる（idleでも押せるが何も映らない）
-  ui.watchBtn.onclick = () => {
-    // watch.js側でsession/gameを購読してるので、ここはUI上の意味だけ。
-    ui.screenTitle.textContent = "観戦";
-    ui.screenSub.textContent = "プレイ中なら画面が表示されます";
+  ui.watchBtn.onclick = async () => {
+    // 観戦はUI的に「観戦選択」だけ。playing時は自動でプレイ画面になる。
+    const s = (await get(sessionRef)).val();
+    if (s?.state === "playing") {
+      await set(ref(db, PATHS.sessionClientState(uid)), "watching");
+    }
   };
 
-  // ソロ開始（排他：idleのときのみ）
+  // ソロ開始
   ui.soloBtn.onclick = async () => {
-    const sSnap = await get(sessionRef);
-    const s = sSnap.val();
+    const s = (await get(sessionRef)).val();
     if (s?.state && s.state !== "idle") return;
 
     const sessionId = `sess_${Date.now()}_${uuidShort()}`;
@@ -88,6 +122,7 @@ export function bindLobby({ uid }) {
       p2Uid: null,
       recruiting: null,
       ready: { [uid]: false },
+      clientState: { [uid]: "preparing" },
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
     });
@@ -95,8 +130,7 @@ export function bindLobby({ uid }) {
 
   // マルチ募集
   ui.multiBtn.onclick = async () => {
-    const sSnap = await get(sessionRef);
-    const s = sSnap.val();
+    const s = (await get(sessionRef)).val();
     if (s?.state && s.state !== "idle") return;
 
     const sessionId = `sess_${Date.now()}_${uuidShort()}`;
@@ -109,24 +143,20 @@ export function bindLobby({ uid }) {
       hostUid: uid,
       p1Uid: uid,
       p2Uid: null,
-      recruiting: {
-        promptId,
-        joinerUid: null,
-      },
+      recruiting: { promptId, joinerUid: null },
       ready: { [uid]: false },
+      clientState: { [uid]: "preparing" },
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
     });
-
-    // 募集ポップアップは全員に出す必要があるが、
-    // 今回は簡易に「状態監視して、プレイヤー以外に参加確認を出す」方式を watch.js側で実装している。
   };
 
   // 準備完了
   ui.readyBtn.onclick = async () => {
     await set(ref(db, PATHS.sessionReady(uid)), true);
+    await set(ref(db, PATHS.sessionClientState(uid)), "preparing");
 
-    // hostだけが開始判定を行う
+    // hostだけが開始判定
     const s = (await get(sessionRef)).val();
     if (!s || s.hostUid !== uid) return;
     if (s.state !== "preparing") return;
@@ -142,56 +172,47 @@ export function bindLobby({ uid }) {
         state: "playing",
         updatedAt: serverTimestamp(),
       });
+      await set(ref(db, PATHS.sessionClientState(uid)), "playing");
     }
   };
 
-  // 離脱（recruiting/preparingのみ）
+  // 離脱（簡易：セッション破棄）
   ui.leaveBtn.onclick = async () => {
     const s = (await get(sessionRef)).val();
     if (!s) return;
     const isPlayer = s.p1Uid === uid || s.p2Uid === uid;
     if (!isPlayer) return;
-
-    // ホストが抜けるならセッション終了してidleに戻す（簡易）
-    if (s.hostUid === uid) {
-      await remove(sessionRef);
-    } else {
-      // p2が抜けるだけならp2をnullにして募集し直し等も可能だが、今回は簡易にセッション破棄
-      await remove(sessionRef);
-    }
+    await remove(sessionRef);
   };
 
-  // -------- マルチ早押し参加（参加者じゃない人が recruiting を見たら OK/NG を出す）--------
-  // 参加確認UIは簡易に window.confirm で実装（後であなたのUIに置き換え可）
+  // ホストの「ゲームリアタイア」＝強制終了
+  ui.retireBtn.onclick = async () => {
+    const s = (await get(sessionRef)).val();
+    if (!s || s.hostUid !== uid) return;
+    if (s.state !== "playing") return;
+    await update(sessionRef, { state: "finished", finishedReason: "retire", updatedAt: serverTimestamp() });
+  };
+
+  // マルチ早押し参加（参加者以外にconfirm）
   onValue(sessionRef, async (snap) => {
     const s = snap.val();
     if (!s) return;
-    if (s.state !== "recruiting") return;
-    if (s.mode !== "multi") return;
+    if (s.state !== "recruiting" || s.mode !== "multi") return;
 
     const isAlreadyPlayer = (s.p1Uid === uid || s.p2Uid === uid);
     if (isAlreadyPlayer) return;
-
-    // joinerが決まってるなら何もしない
     if (s.recruiting?.joinerUid) return;
 
-    // 参加ポップアップ
     const ok = window.confirm("マルチに参加しますか？（早押し）");
     if (!ok) return;
 
-    // transactionで最速参加を確定
     const joinerRef = ref(db, PATHS.sessionRecruitingJoiner);
-    const tx = await runTransaction(joinerRef, (cur) => {
-      if (cur) return; // 既に誰かが確定
-      return uid;
-    });
-
+    const tx = await runTransaction(joinerRef, (cur) => (cur ? undefined : uid));
     if (!tx.committed) {
       alert("間に合いませんでした");
       return;
     }
 
-    // 自分がjoinerになったので p2Uid をセッ���し preparingへ
     const sessionNow = (await get(sessionRef)).val();
     if (!sessionNow || sessionNow.state !== "recruiting") return;
 
@@ -199,6 +220,7 @@ export function bindLobby({ uid }) {
       state: "preparing",
       p2Uid: uid,
       ready: { ...(sessionNow.ready || {}), [uid]: false },
+      clientState: { ...(sessionNow.clientState || {}), [uid]: "preparing" },
       updatedAt: serverTimestamp(),
     });
   });

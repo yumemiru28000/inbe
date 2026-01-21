@@ -894,7 +894,7 @@ const BOSS = {
   hpMax: 130,
   x: 0.5,
   y: 0.16,
-  baseBulletSpeed: 0.4,
+  baseBulletSpeed: 0.33,
   shieldEvery: 9.0,
   shieldDuration: 8.1,       // ← ここを10.0に！
   moveSpeed: 0.18
@@ -912,6 +912,7 @@ const BOSS = {
     const rng = mulberry32((Date.now() ^ 0x9e3779b9) >>> 0);
 
     const st = {
+      gameOver: false,
       tick: 0,
       mode: room.mode,
       elapsed: 0,
@@ -1316,6 +1317,7 @@ function collidePlayerBulletsToEnemies() {
           boss.hp -= 1;
           const p=st.players[b.ownerUid]; if (p) p.score += SCORE.BOSS_HIT;
           if (boss.hp<=0) boss.alive = false;
+            st.gameOver = true; // ★これを追加
         }
       }
     }
@@ -1333,6 +1335,7 @@ function collidePlayerBulletsToEnemies() {
     function isAllDead() { return Object.values(st.players).every(p=>!p.alive); }
 
 function step(dt) {
+  if (st.gameOver) return; // ★最初に追加！
   st.tick++;
 
   // ★Wave待機中：カウントだけ減らす（ゲーム進行は止める）
@@ -1757,11 +1760,11 @@ if (st.wave <= 3) {
         sim.applyInputs(inputs);
         sim.step(intervalMs / 1000);
 
-        if (sim.isAllDead()) {
-          await update(ref(db, PATHS.room(roomId)), { state: "finished", finishedReason: "all_dead", updatedAt: Date.now() });
-          await update(ref(db, PATHS.roomIndex(roomId)), { state: "finished" });
-          return;
-        }
+         if (sim.isAllDead() || sim.gameOver) {
+      await update(ref(db, PATHS.room(roomId)), { state: "finished", finishedReason: "boss_killed", updatedAt: Date.now() });
+      await update(ref(db, PATHS.roomIndex(roomId)), { state: "finished" });
+      return;
+    }
 
         await set(ref(db, PATHS.roomGame(roomId)), sim.snapshot());
       }, intervalMs);

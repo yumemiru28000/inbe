@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Invooms (RTDB) - 60fps Host Sim + Rapid Fire + Limits</title>
+  <title>Invader Rooms (RTDB) - 60fps Host Sim + Rapid Fire + Limits (no dup decl)</title>
   <style>
     :root { color-scheme: dark; }
     html, body { height: 100%; margin: 0; background:#05070b; color:#e8eefc; font-family: system-ui, -apple-system, Segoe UI, Roboto, "Noto Sans JP", sans-serif; overflow:hidden; }
@@ -244,7 +244,6 @@
   <section id="gameScreen" class="screen">
     <div id="gameWrap">
       <div id="gameTopBar">
-        <span class="tag" id="screenTitle">GAME</span>
         <span class="tag" id="youTag">YOU:-</span>
         <span class="tag" id="modeTag">mode:-</span>
         <span class="tag" id="stateTag">state:-</span>
@@ -292,7 +291,6 @@
   import { getDatabase, ref, onValue, get, set, update, remove, runTransaction, serverTimestamp, onDisconnect } from "https://www.gstatic.com/firebasejs/12.8.0/firebase-database.js";
   import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/12.8.0/firebase-auth.js";
 
-  // ---------------- Firebase config ----------------
   const firebaseConfig = {
     apiKey: "AIzaSyBePhUfYinZ02-1BWbZvzV3IBwoAYh-kxE",
     authDomain: "suisougaku-bdcc0.firebaseapp.com",
@@ -308,7 +306,6 @@
   const db = getDatabase(app);
   const auth = getAuth(app);
 
-  // ---------------- Paths ----------------
   const PATHS = {
     presence: (uid) => `presence/${uid}`,
     names: (uid) => `lobby/names/${uid}`,
@@ -325,7 +322,6 @@
     roomRecruitJoiner: (roomId) => `rooms/${roomId}/recruiting/joinerUid`,
   };
 
-  // ---------------- UI ----------------
   const $ = (q) => document.querySelector(q);
   const ui = {
     me: $("#me"),
@@ -388,13 +384,6 @@
 
   function uuidShort() { return Math.random().toString(16).slice(2, 10); }
 
-  function showAnn(title, body) {
-    ui.annTitle.textContent = title;
-    ui.annBody.textContent = body;
-    ui.ann.style.display = "flex";
-  }
-  function hideAnn(){ ui.ann.style.display = "none"; }
-
   function showModal(title, body) {
     ui.modalTitle.textContent = title;
     ui.modalBody.textContent = body;
@@ -416,11 +405,18 @@
     });
   }
 
+  function showAnn(title, body) {
+    ui.annTitle.textContent = title;
+    ui.annBody.textContent = body;
+    ui.ann.style.display = "flex";
+  }
+  function hideAnn(){ ui.ann.style.display = "none"; }
+
   function escapeHtml(s) {
     return String(s).replace(/[&<>"']/g, (m) => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;" }[m]));
   }
 
-  // ---------------- Admin mode (local) ----------------
+  // admin local
   let adminMode = (localStorage.getItem("inv_admin") === "1");
   function setAdminMode(v) {
     adminMode = v;
@@ -429,16 +425,12 @@
     ui.adminExitBtn.style.display = v ? "" : "none";
   }
   setAdminMode(adminMode);
-
   ui.adminEnterBtn.onclick = () => {
-    if (ui.adminPw.value.trim() === "1122") {
-      setAdminMode(true);
-      ui.adminPw.value = "";
-    } else alert("パスワードが違います");
+    if (ui.adminPw.value.trim() === "1122") { setAdminMode(true); ui.adminPw.value=""; }
+    else alert("パスワードが違います");
   };
   ui.adminExitBtn.onclick = () => setAdminMode(false);
 
-  // ---------------- Presence ----------------
   async function bindPresence(userId) {
     const presRef = ref(db, PATHS.presence(userId));
     await set(presRef, { online: true, lastSeen: serverTimestamp() });
@@ -450,7 +442,6 @@
     return !!snap.val()?.online;
   }
 
-  // ---------------- Name ----------------
   async function getMyName(userId) {
     const snap = await get(ref(db, PATHS.names(userId)));
     const v = snap.val();
@@ -460,7 +451,6 @@
     await set(ref(db, PATHS.names(userId)), name);
   }
 
-  // ---------------- Leaderboard ----------------
   function bindLeaderboard() {
     onValue(ref(db, PATHS.leaderboardTop), (snap) => {
       const data = snap.val() || [];
@@ -480,20 +470,17 @@
     });
   }
 
-  // ---------------- Optional wave backgrounds ----------------
+  // optional backgrounds
   const waveBg = { 1: new Image(), 2: new Image(), 3: new Image(), 4: new Image() };
   const waveBgOk = { 1:false, 2:false, 3:false, 4:false };
-  function loadBg(n) {
-    const img = waveBg[n];
-    img.onload = () => { waveBgOk[n] = true; };
-    img.onerror = () => { waveBgOk[n] = false; };
-    img.src = `w${n}.png`;
+  for (const n of [1,2,3,4]) {
+    waveBg[n].onload = () => { waveBgOk[n] = true; };
+    waveBg[n].onerror = () => { waveBgOk[n] = false; };
+    waveBg[n].src = `w${n}.png`;
   }
-  loadBg(1); loadBg(2); loadBg(3); loadBg(4);
 
-  // ---------------- Render ----------------
+  // render
   const ctx = ui.canvas.getContext("2d");
-
   function resizeCanvasToStage() {
     const dpr = window.devicePixelRatio || 1;
     const rect = ui.stage.getBoundingClientRect();
@@ -592,7 +579,8 @@
     ctx.fillText(`BOSS HP ${boss.hp}/${boss.hpMax}  PHASE:${boss.phase}${shield}`, x + 6, y + 11);
   }
 
-  // render state (no interpolation here; host sim is smooth now)
+  let latestSnap = null;
+
   function drawState(g, myUid) {
     resizeCanvasToStage();
     const { w, h } = stageSize();
@@ -658,7 +646,6 @@
       }
     }
 
-    // bullets: glow for visibility
     ctx.save();
     ctx.shadowBlur = 12;
     ctx.shadowColor = "rgba(255,255,255,.55)";
@@ -697,7 +684,6 @@
     ui.hud.style.display = "none";
   }
 
-  // render loop: always draw latestSnap at 60fps
   function startRenderLoop() {
     function frame() {
       if (state.userId && latestSnap) drawState(latestSnap, state.userId);
@@ -706,14 +692,13 @@
     requestAnimationFrame(frame);
   }
 
-  // ---------------- Rapid fire + Limits (重要) ----------------
-  const FIRE_RATE = 15;                 // 連射速度（上げてもOK）
-  const MAX_PLAYER_BULLETS = 90;        // 連射で重くならないよう上限
-  const MAX_ENEMY_BULLETS  = 220;       // waveが進むほど増えるので上限
-  const MAX_ENEMIES        = 80;        // 敵上限
-  const MAX_HAZARDS        = 40;        // 落下物上限
+  // gameplay tuning + limits
+  const FIRE_RATE = 15;
+  const MAX_PLAYER_BULLETS = 90;
+  const MAX_ENEMY_BULLETS  = 220;
+  const MAX_ENEMIES        = 80;
+  const MAX_HAZARDS        = 40;
 
-  // ---------------- Input sender ----------------
   function bindInputSenderForRoom(userId, roomId, getIsPlayerFn) {
     const keys = { left:false, right:false, shoot:false };
     let bound = true;
@@ -748,7 +733,7 @@
     };
   }
 
-  // ---------------- Game simulation ----------------
+  // sim constants
   const WAVE_DUR = [30, 40, 90, 140];
   const SCORE = { A: 60, B: 120, C: 200, D: 0, E: 300, BOSS_HIT: 10, BOSS_KILL: 5000 };
   const ENEMY = {
@@ -767,16 +752,16 @@
     shieldDuration: 1.8,
     moveSpeed: 0.18
   };
-  const clamp = (v,a,b)=>Math.max(a,Math.min(b,v));
-  const normalizeAngle=(a)=>{while(a>Math.PI)a-=Math.PI*2;while(a<-Math.PI)a+=Math.PI*2;return a;};
-  const mulberry32=(a)=>()=>{let t=a+=0x6D2B79F5;t=Math.imul(t^(t>>>15),t|1);t^=t+Math.imul(t^(t>>>7),t|61);return((t^(t>>>14))>>>0)/4294967296;};
-  const randChoice=(rng,arr)=>arr[Math.floor(rng()*arr.length)];
-  const bossPhase = (b)=> b.hp>30?1:b.hp>20?2:b.hp>10?3:4;
+  const clampN = (v,a,b)=>Math.max(a,Math.min(b,v));
+  const normalizeAngleN=(a)=>{while(a>Math.PI)a-=Math.PI*2;while(a<-Math.PI)a+=Math.PI*2;return a;};
+  const mulberry32N=(a)=>()=>{let t=a+=0x6D2B79F5;t=Math.imul(t^(t>>>15),t|1);t^=t+Math.imul(t^(t>>>7),t|61);return((t^(t>>>14))>>>0)/4294967296;};
+  const randChoiceN=(rng,arr)=>arr[Math.floor(rng()*arr.length)];
+  const bossPhaseN = (b)=> b.hp>30?1:b.hp>20?2:b.hp>10?3:4;
 
   function createHostSim(room) {
     const p1Uid = room.p1Uid;
     const p2Uid = room.p2Uid;
-    const rng = mulberry32((Date.now() ^ 0x9e3779b9) >>> 0);
+    const rng = mulberry32N((Date.now() ^ 0x9e3779b9) >>> 0);
 
     const st = {
       tick: 0,
@@ -813,7 +798,7 @@
       const rows=3, cols=6, x0=0.18, y0=0.14, dx=0.11, dy=0.085;
       for (let r=0;r<rows;r++) for (let c=0;c<cols;c++) {
         if (st.enemies.length >= MAX_ENEMIES) return;
-        const type = randChoice(st.rng, types);
+        const type = randChoiceN(st.rng, types);
         st.enemies.push({ id:`en_${st.nextEnemyId++}`, type, baseX:x0+c*dx, baseY:y0+r*dy, x:x0+c*dx, y:y0+r*dy, alive:true, fireAcc:0 });
       }
     }
@@ -938,9 +923,9 @@
             const dx=t.x-b.x, dy=t.y-b.y;
             const desired=Math.atan2(dy,dx);
             const cur=Math.atan2(b.vy,b.vx);
-            const diff=normalizeAngle(desired-cur);
+            const diff=normalizeAngleN(desired-cur);
             const maxTurn=2.2*dt;
-            const turned=cur+clamp(diff,-maxTurn,maxTurn);
+            const turned=cur+clampN(diff,-maxTurn,maxTurn);
             const spd=Math.hypot(b.vx,b.vy);
             b.vx=Math.cos(turned)*spd;
             b.vy=Math.sin(turned)*spd;
@@ -976,7 +961,7 @@
             st.enemyBullets.push({ x:e.x,y:e.y, vx:Math.cos(ang)*spd, vy:Math.sin(ang)*spd, type:"C_HOMING", homingLeft:cfg.homingTime, dead:false });
           } else {
             const t=pickAlivePlayer();
-            const aim=t?clamp((t.x-e.x)*1.2,-0.25,0.25):0;
+            const aim=t?clampN((t.x-e.x)*1.2,-0.25,0.25):0;
             st.enemyBullets.push({ x:e.x,y:e.y, vx:aim, vy:cfg.bulletSpeed, type:`${e.type}_SHOT`, dead:false });
           }
         }
@@ -1027,12 +1012,13 @@
       if (phase>=2) patterns.push(pSnipe, pSplit);
       if (phase>=3) patterns.push(pWave, pHomingWeak, pFeint);
       if (phase>=4) patterns.push(pDash, pSnake);
-      const p = randChoice(st.rng, patterns);
+      const p = randChoiceN(st.rng, patterns);
       p(enrage);
     }
+
     function pRing(enrage) {
       const boss=st.boss;
-      const phase=bossPhase(boss);
+      const phase=bossPhaseN(boss);
       const n = phase===1?10:phase===2?12:phase===3?14:16;
       const spd=BOSS.baseBulletSpeed*(1+0.08*(phase-1))*enrage;
       for (let i=0;i<n;i++){
@@ -1139,7 +1125,7 @@
         if (boss.x>0.88){ boss.x=0.88; boss.dashDir=-1; }
       } else {
         boss.x += Math.sin(boss.time*0.9)*0.06*dt;
-        boss.x = clamp(boss.x,0.12,0.88);
+        boss.x = clampN(boss.x,0.12,0.88);
       }
 
       boss.shieldAcc += dt;
@@ -1155,7 +1141,7 @@
         if (fire) fire.pattern();
       }
 
-      const phase = bossPhase(boss);
+      const phase = bossPhaseN(boss);
       const baseAttacksPerSec = phase===1?0.55:phase===2?0.75:phase===3?0.95:1.20;
       boss.attackAcc += baseAttacksPerSec * Math.min(2.2,enrage) * dt;
       while (boss.attackAcc >= 1) { boss.attackAcc -= 1; doBossAttack(phase, Math.min(2.2,enrage)); }
@@ -1191,7 +1177,6 @@
       return Object.values(st.players).every(p=>!p.alive);
     }
 
-    // 60fps step
     function step(dt) {
       st.tick++;
       st.elapsed += dt;
@@ -1214,7 +1199,7 @@
         const speed=0.45;
         if (inp.left) p.x -= speed*dt;
         if (inp.right) p.x += speed*dt;
-        p.x = clamp(p.x, 0.05, 0.95);
+        p.x = clampN(p.x, 0.05, 0.95);
 
         if (inp.shoot) {
           p.fireAcc += FIRE_RATE * dt;
@@ -1268,7 +1253,7 @@
         x:st.boss.x, y:st.boss.y, alive:st.boss.alive,
         hp:st.boss.hp, hpMax:st.boss.hpMax,
         shieldLeft:st.boss.shieldLeft,
-        phase: bossPhase(st.boss),
+        phase: bossPhaseN(st.boss),
       } : null;
 
       return {
@@ -1289,7 +1274,7 @@
     return { step, snapshot, applyInputs, isAllDead };
   }
 
-  // ---------------- Room system ----------------
+  // room system state
   const MAX_ROOMS = 5;
   const ROOM_MAX_PLAY_MS = 7 * 60 * 1000;
 
@@ -1303,32 +1288,6 @@
     lastRoom: null,
   };
 
-  async function countRooms() {
-    const snap = await get(ref(db, PATHS.roomsIndex));
-    const v = snap.val() || {};
-    return Object.keys(v).length;
-  }
-
-  function stateDotClass(st) {
-    if (st === "playing") return "playing";
-    if (st === "preparing") return "preparing";
-    if (st === "recruiting") return "recruiting";
-    if (st === "finished") return "finished";
-    return "";
-  }
-
-  function roomStateLabel(st) {
-    if (st === "recruiting") return "募集中";
-    if (st === "preparing") return "準備中";
-    if (st === "playing") return "プレイ中";
-    if (st === "finished") return "終了";
-    return "待機";
-  }
-
-  function isPlayer(room) {
-    return room?.p1Uid === state.userId || room?.p2Uid === state.userId;
-  }
-
   async function deleteRoom(roomId) {
     await remove(ref(db, PATHS.room(roomId)));
     await remove(ref(db, PATHS.roomIndex(roomId)));
@@ -1338,20 +1297,17 @@
     if (state.stopInput) { state.stopInput(); state.stopInput = null; }
     if (state.roomUnsub) { state.roomUnsub(); state.roomUnsub = null; }
     if (state.gameUnsub) { state.gameUnsub(); state.gameUnsub = null; }
-
     state.roomId = null;
     ui.roomTag.style.display = "none";
     ui.roomTag.textContent = "room:-";
     ui.readyBtn.style.display = "none";
     ui.retireBtn.style.display = "none";
-
     latestSnap = null;
     if (goLobby) setScreen("lobby");
   }
 
   async function enterRoom(roomId) {
     await leaveRoom(false);
-
     state.roomId = roomId;
     ui.roomTag.style.display = "";
     ui.roomTag.textContent = `room:${roomId.slice(-6)}`;
@@ -1359,10 +1315,16 @@
 
     state.stopInput = bindInputSenderForRoom(state.userId, roomId, () => {
       const room = state.lastRoom;
-      return room?.state === "playing" && isPlayer(room);
+      return room?.state === "playing" && (room?.p1Uid === state.userId || room?.p2Uid === state.userId);
     });
 
     subscribeRoom(roomId);
+  }
+
+  async function countRooms() {
+    const snap = await get(ref(db, PATHS.roomsIndex));
+    const v = snap.val() || {};
+    return Object.keys(v).length;
   }
 
   async function createRoom(mode) {
@@ -1395,79 +1357,7 @@
     await enterRoom(roomId);
   }
 
-  function bindRoomsList() {
-    onValue(ref(db, PATHS.roomsIndex), (snap) => {
-      const rooms = snap.val() || {};
-      const entries = Object.values(rooms).sort((a,b) => (b.createdAt||0)-(a.createdAt||0));
-
-      ui.roomsList.innerHTML = "";
-      if (entries.length === 0) {
-        ui.roomsList.innerHTML = `<div class="muted">部屋がありません。左から作成してください。</div>`;
-        return;
-      }
-
-      for (const r of entries) {
-        const div = document.createElement("div");
-        div.className = "roomRow";
-
-        const left = document.createElement("div");
-        const top = document.createElement("div");
-        top.className = "roomTop";
-        top.innerHTML = `
-          <span class="pill"><span class="dot ${stateDotClass(r.state)}"></span>${roomStateLabel(r.state || "idle")}</span>
-          <span class="tag">#${r.roomId.slice(-6)}</span>
-          <span class="tag">${r.mode || "-"}</span>
-          <span class="muted">host: ${escapeHtml(r.hostName || "?")}</span>
-        `;
-        const meta = document.createElement("div");
-        meta.className = "roomMeta";
-        const sa = r.startedAt ? ` / started: ${new Date(r.startedAt).toLocaleTimeString()}` : "";
-        meta.textContent = `created: ${new Date(r.createdAt || Date.now()).toLocaleTimeString()}${sa}`;
-        left.appendChild(top);
-        left.appendChild(meta);
-
-        const btns = document.createElement("div");
-        btns.className = "roomBtns";
-
-        const joinBtn = document.createElement("button");
-        joinBtn.className = "secondary small";
-        joinBtn.textContent = "入室";
-        joinBtn.onclick = async () => { await enterRoom(r.roomId); };
-
-        const watchBtn = document.createElement("button");
-        watchBtn.className = "ghost small";
-        watchBtn.textContent = "観戦";
-        watchBtn.onclick = async () => { await enterRoom(r.roomId); };
-
-        btns.appendChild(joinBtn);
-        btns.appendChild(watchBtn);
-
-        if (adminMode) {
-          const adminKill = document.createElement("button");
-          adminKill.className = "danger small";
-          adminKill.textContent = "運営:強制終了";
-          adminKill.onclick = async () => {
-            await update(ref(db, PATHS.room(r.roomId)), { state: "finished", finishedReason: "admin_kill", updatedAt: Date.now() }).catch(()=>{});
-            await update(ref(db, PATHS.roomIndex(r.roomId)), { state: "finished" }).catch(()=>{});
-          };
-
-          const adminDel = document.createElement("button");
-          adminDel.className = "danger small";
-          adminDel.textContent = "運営:削除";
-          adminDel.onclick = async () => { await deleteRoom(r.roomId); };
-
-          btns.appendChild(adminKill);
-          btns.appendChild(adminDel);
-        }
-
-        div.appendChild(left);
-        div.appendChild(btns);
-        ui.roomsList.appendChild(div);
-      }
-    });
-  }
-
-  // ---------------- Subscribe room + host loop (60fps sim, 12Hz DB) ----------------
+  // host loop (60fps sim, 12Hz DB)
   const activeHostLoops = new Map(); // roomId -> { rafId, lastTs, lastDbSent, sim }
 
   function subscribeRoom(roomId) {
@@ -1492,7 +1382,7 @@
       ui.stateTag.textContent = `state:${room.state}`;
       ui.statusLine.textContent = `in ${roomId.slice(-6)} ${room.state}`;
 
-      const player = isPlayer(room);
+      const player = (room.p1Uid === state.userId || room.p2Uid === state.userId);
       const host = room.hostUid === state.userId;
       ui.retireBtn.style.display = (host && room.state === "playing") ? "" : "none";
       ui.readyBtn.style.display = (player && room.state === "preparing") ? "" : "none";
@@ -1572,17 +1462,9 @@
     if (!isHost || !isPlaying) return;
 
     const sim = createHostSim(room);
-
-    // send initial snapshot
     await set(ref(db, PATHS.roomGame(roomId)), sim.snapshot());
 
-    const loop = {
-      rafId: 0,
-      lastTs: performance.now(),
-      lastDbSent: 0,
-      sim,
-    };
-
+    const loop = { rafId: 0, lastTs: performance.now(), lastDbSent: 0, sim };
     const roomRef = ref(db, PATHS.room(roomId));
     const gameRef = ref(db, PATHS.roomGame(roomId));
 
@@ -1592,12 +1474,8 @@
     const stepFrame = async (ts) => {
       const roomNow = (await get(roomRef)).val();
       if (!roomNow) { activeHostLoops.delete(roomId); return; }
-      if (roomNow.state !== "playing") {
-        loop.rafId = requestAnimationFrame(stepFrame);
-        return;
-      }
+      if (roomNow.state !== "playing") { loop.rafId = requestAnimationFrame(stepFrame); return; }
 
-      // 7min finish
       if (roomNow.startedAt && (Date.now() - roomNow.startedAt) >= ROOM_MAX_PLAY_MS) {
         await update(roomRef, { state: "finished", finishedReason: "time_limit_7min", updatedAt: Date.now() });
         await update(ref(db, PATHS.roomIndex(roomId)), { state: "finished" });
@@ -1605,7 +1483,6 @@
         return;
       }
 
-      // idle timeout
       const inputs = (await get(ref(db, PATHS.roomInputsRoot(roomId)))).val() || {};
       const now = Date.now();
       const uids = [roomNow.p1Uid, roomNow.p2Uid].filter(Boolean);
@@ -1618,7 +1495,7 @@
         return;
       }
 
-      const dt = Math.min(0.033, Math.max(0.001, (ts - loop.lastTs) / 1000)); // clamp 1ms..33ms
+      const dt = Math.min(0.033, Math.max(0.001, (ts - loop.lastTs) / 1000));
       loop.lastTs = ts;
 
       loop.sim.applyInputs(inputs);
@@ -1631,7 +1508,6 @@
         return;
       }
 
-      // send to DB at 12Hz
       if ((ts - loop.lastDbSent) >= DB_INTERVAL) {
         loop.lastDbSent = ts;
         await set(gameRef, loop.sim.snapshot());
@@ -1644,8 +1520,23 @@
     activeHostLoops.set(roomId, loop);
   }
 
-  // ---------------- Rooms + navigation ----------------
-  function bindRoomsList() {
+  function roomStateLabel(st) {
+    if (st === "recruiting") return "募集中";
+    if (st === "preparing") return "準備中";
+    if (st === "playing") return "プレイ中";
+    if (st === "finished") return "終了";
+    return "待機";
+  }
+  function stateDotClass(st) {
+    if (st === "playing") return "playing";
+    if (st === "preparing") return "preparing";
+    if (st === "recruiting") return "recruiting";
+    if (st === "finished") return "finished";
+    return "";
+  }
+
+  // rooms list (single definition)
+  function renderRoomsList() {
     onValue(ref(db, PATHS.roomsIndex), (snap) => {
       const rooms = snap.val() || {};
       const entries = Object.values(rooms).sort((a,b) => (b.createdAt||0)-(a.createdAt||0));
@@ -1717,95 +1608,7 @@
     });
   }
 
-  async function countRooms() {
-    const snap = await get(ref(db, PATHS.roomsIndex));
-    const v = snap.val() || {};
-    return Object.keys(v).length;
-  }
-
-  function stateDotClass(st) {
-    if (st === "playing") return "playing";
-    if (st === "preparing") return "preparing";
-    if (st === "recruiting") return "recruiting";
-    if (st === "finished") return "finished";
-    return "";
-  }
-  function roomStateLabel(st) {
-    if (st === "recruiting") return "募集中";
-    if (st === "preparing") return "準備中";
-    if (st === "playing") return "プレイ中";
-    if (st === "finished") return "終了";
-    return "待機";
-  }
-
-  async function createRoom(mode) {
-    const roomsCount = await countRooms();
-    if (roomsCount >= MAX_ROOMS) {
-      ui.createHint.textContent = "部屋数が上限（5）です。誰かが部屋を削除してから作成してください。";
-      return;
-    }
-
-    const roomId = `room_${Date.now()}_${uuidShort()}`;
-    const now = Date.now();
-    const room = {
-      roomId,
-      state: (mode === "multi") ? "recruiting" : "preparing",
-      mode,
-      hostUid: state.userId,
-      hostName: state.userName,
-      p1Uid: state.userId,
-      p2Uid: null,
-      recruiting: mode === "multi" ? { joinerUid: null } : null,
-      ready: { [state.userId]: false },
-      createdAt: now,
-      updatedAt: now,
-      startedAt: 0
-    };
-
-    await set(ref(db, PATHS.room(roomId)), room);
-    await set(ref(db, PATHS.roomIndex(roomId)), { roomId, state: room.state, mode, hostName: state.userName, createdAt: now, startedAt: 0 });
-
-    await enterRoom(roomId);
-  }
-
-  async function deleteRoom(roomId) {
-    await remove(ref(db, PATHS.room(roomId)));
-    await remove(ref(db, PATHS.roomIndex(roomId)));
-  }
-
-  async function leaveRoom(goLobby = true) {
-    if (state.stopInput) { state.stopInput(); state.stopInput = null; }
-    if (state.roomUnsub) { state.roomUnsub(); state.roomUnsub = null; }
-    if (state.gameUnsub) { state.gameUnsub(); state.gameUnsub = null; }
-    state.roomId = null;
-    ui.roomTag.style.display = "none";
-    ui.roomTag.textContent = "room:-";
-    ui.readyBtn.style.display = "none";
-    ui.retireBtn.style.display = "none";
-    latestSnap = null;
-    if (goLobby) setScreen("lobby");
-  }
-
-  async function enterRoom(roomId) {
-    await leaveRoom(false);
-    state.roomId = roomId;
-    ui.roomTag.style.display = "";
-    ui.roomTag.textContent = `room:${roomId.slice(-6)}`;
-    setScreen("game");
-
-    state.stopInput = bindInputSenderForRoom(state.userId, roomId, () => {
-      const room = state.lastRoom;
-      return room?.state === "playing" && isPlayer(room);
-    });
-
-    subscribeRoom(roomId);
-  }
-
-  function isPlayer(room) {
-    return room?.p1Uid === state.userId || room?.p2Uid === state.userId;
-  }
-
-  // ---------------- Boot ----------------
+  // boot
   await signInAnonymously(auth);
 
   onAuthStateChanged(auth, async (user) => {
@@ -1816,7 +1619,7 @@
 
     await bindPresence(state.userId);
     bindLeaderboard();
-    bindRoomsList();
+    renderRoomsList();
     startRenderLoop();
 
     state.userName = await getMyName(state.userId);
@@ -1851,9 +1654,7 @@
       await createRoom("multi");
     };
 
-    ui.leaveRoomBtn.onclick = async () => {
-      await leaveRoom(true);
-    };
+    ui.leaveRoomBtn.onclick = async () => { await leaveRoom(true); };
 
     ui.readyBtn.onclick = async () => {
       if (!state.roomId) return;

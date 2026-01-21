@@ -1367,13 +1367,13 @@ function step(dt) {
 if (st.wave <= 3) {
   // 雑魚スポーンロジックそのまま
   let interval = st.wave === 1 ? 0.38 : st.wave === 2 ? 0.31 : 0.24;
-  let batch = st.wave === 1 ? 1 : st.wave === 2 ? 1 : 1; // 好きな数
+  let batch = st.wave === 1 ? 1 : st.wave === 1 ? 1 : 1; // 好きな数
   st.enemySpawnAcc += dt;
   while (st.enemySpawnAcc >= interval) {
     st.enemySpawnAcc -= interval;
     for (let i = 0; i < batch; ++i) {
       const x = 0.08 + st.rng() * 0.84;
-      const y = -0.2 - st.rng() * 0.08;
+      const y = -0.3 - st.rng() * 0.08;
       st.enemies.push({
         id: `en_${st.nextEnemyId++}`,
         type: "A",

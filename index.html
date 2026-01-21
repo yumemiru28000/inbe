@@ -1,9 +1,10 @@
+
 <!doctype html>
 <html lang="ja">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Invader Rooms (RTDB) - Smooth FIX (no duplicate declarations)</title>
+  <title>Invader Rooms (RTDB) - Smooth FIX + Despawn OOB</title>
   <style>
     :root { color-scheme: dark; }
     html, body { height: 100%; margin: 0; background:#05070b; color:#e8eefc; font-family: system-ui, -apple-system, Segoe UI, Roboto, "Noto Sans JP", sans-serif; overflow:hidden; }
@@ -220,7 +221,7 @@
         <div class="card">
           <div class="row" style="justify-content:space-between;">
             <div style="font-weight:1000; font-size:18px;">部屋一覧</div>
-            <span class="tag">��大5</span>
+            <span class="tag">最大5</span>
           </div>
           <div class="muted" style="margin-top:6px;">
             同時プレイOK。プレイ中の部屋でも <b>観戦</b> できます。
@@ -871,6 +872,24 @@
       rng
     };
 
+    // ---------------- ★追加：画面外のものを完全削除（DBに残さない） ----------------
+    // alive=false / dead=true だけだと配列が増え続けて「がたつき」の原因になるので、
+    // 毎tick最後にfilterで消します。
+    const DESPAWN_PAD = 0.18; // 余白（小さすぎると画面端で消えやすい）
+
+    function isOutNorm(x, y, pad = DESPAWN_PAD) {
+      return (x < -pad || x > 1 + pad || y < -pad || y > 1 + pad);
+    }
+
+    function cleanupOutOfBounds() {
+      st.enemies = (st.enemies || []).filter(e => e && e.alive !== false && !isOutNorm(e.x, e.y));
+      st.hazards = (st.hazards || []).filter(h => h && h.alive !== false && !isOutNorm(h.x, h.y));
+
+      st.playerBullets = (st.playerBullets || []).filter(b => b && !b.dead && !isOutNorm(b.x, b.y));
+      st.enemyBullets  = (st.enemyBullets  || []).filter(b => b && !b.dead && !isOutNorm(b.x, b.y));
+    }
+    // ----------------------------------------------------------------------
+
     const mkPlayer = (playerUid, color, x) => ({ uid: playerUid, color, x, y: 0.9, alive: true, score: 0, fireAcc: 0 });
     st.players[p1Uid] = mkPlayer(p1Uid, "blue", 0.45);
     if (p2Uid) st.players[p2Uid] = mkPlayer(p2Uid, "red", 0.55);
@@ -1305,6 +1324,9 @@
 
       movePlayerBullets(dt);
       st.playerBullets = st.playerBullets.filter(b=>!b.dead);
+
+      // ---------------- ★追加：最後に必ず実行（画面外の全オブジェクト削除） ----------------
+      cleanupOutOfBounds();
     }
 
     function snapshot() {

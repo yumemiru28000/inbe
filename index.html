@@ -174,10 +174,6 @@
       color:#a8b3c7;
       font-size: 14px;
     }
-
-    #modal { position:fixed; inset:0; display:none; align-items:center; justify-content:center; background: rgba(0,0,0,.60); z-index: 50; }
-    #modal .card { width:min(560px, 92vw); }
-    #modal .row { justify-content:flex-end; }
   </style>
 </head>
 <body>
@@ -198,7 +194,7 @@
       <div class="panel card">
         <div class="logo">INVADER</div>
         <h1>名前を入力</h1>
-        <p class="muted" style="margin:0 0 12px 0;">最初に1回だけ必���です（後で変更可）。</p>
+        <p class="muted" style="margin:0 0 12px 0;">最初に1回だけ必要です（後で変更可）。</p>
         <input id="nameInput" placeholder="表示名（20文字まで）" maxlength="20" />
         <div class="row" style="margin-top:12px; justify-content:flex-end;">
           <button id="saveNameBtn">決定</button>
@@ -221,7 +217,6 @@
 
           <div class="row" style="margin-top:12px;">
             <button id="createSoloBtn">ソロ部屋</button>
-            <button id="createMultiBtn" style="display:none;">マルチ部屋</button>
           </div>
           <div class="muted" id="createHint" style="margin-top:10px;"></div>
 
@@ -314,17 +309,6 @@
   </section>
 </div>
 
-<div id="modal">
-  <div class="card">
-    <div style="font-weight:1000; margin-bottom:6px;" id="modalTitle"></div>
-    <div class="muted" style="margin-bottom:10px;" id="modalBody"></div>
-    <div class="row">
-      <button id="modalNo" class="secondary">いいえ</button>
-      <button id="modalYes">はい</button>
-    </div>
-  </div>
-</div>
-
 <script type="module">
   import { initializeApp } from "https://www.gstatic.com/firebasejs/12.8.0/firebase-app.js";
   import { getDatabase, ref, onValue, get, set, update, remove, serverTimestamp, onDisconnect } from "https://www.gstatic.com/firebasejs/12.8.0/firebase-database.js";
@@ -377,7 +361,6 @@
     changeNameBtn: $("#changeNameBtn"),
 
     createSoloBtn: $("#createSoloBtn"),
-    createMultiBtn: $("#createMultiBtn"),
     createHint: $("#createHint"),
 
     roomsList: $("#roomsList"),
@@ -409,12 +392,6 @@
     ann: $("#ann"),
     annTitle: $("#annTitle"),
     annBody: $("#annBody"),
-
-    modal: $("#modal"),
-    modalTitle: $("#modalTitle"),
-    modalBody: $("#modalBody"),
-    modalYes: $("#modalYes"),
-    modalNo: $("#modalNo"),
   };
 
   function setScreen(name) {
@@ -518,7 +495,6 @@
     bulletH: 16 * 1.5,
     eBulletS: 6 * 1.5,
     hazardR: 10 * 1.5,
-
     absorberR: 26,
   };
 
@@ -649,11 +625,10 @@
     ui.hud.style.display = "";
     drawBackgroundForWave(g.wave || 1);
 
-    // Absorbers (Wave3 bullet-stopper) - visual
     if (Array.isArray(g.absorbers)) {
       for (const a of g.absorbers) {
         const s = toScreen(a.x, a.y);
-        const t = (g.sentAt ? (Date.now() - g.sentAt) / 1000 : 0) + (a.t ?? 0);
+        const t = (a.t ?? 0);
         const pulse = 0.5 + 0.5 * Math.sin(t * 4.0);
         const r = SIZE.absorberR * (0.85 + 0.15 * pulse);
 
@@ -671,7 +646,6 @@
         ctx.arc(s.x, s.y, r, 0, Math.PI * 2);
         ctx.stroke();
 
-        // swirl rings
         ctx.globalAlpha = 0.45;
         ctx.strokeStyle = "rgba(255,255,255,.45)";
         ctx.lineWidth = 1;
@@ -717,7 +691,6 @@
       ctx.arc(s.x, s.y, SIZE.hazardR, 0, Math.PI * 2);
       ctx.fill();
 
-      // bomb ring
       if (hz.type === "BOMB") {
         ctx.strokeStyle = "rgba(255,255,255,.8)";
         ctx.lineWidth = 2;
@@ -772,7 +745,6 @@
       ctx.fillStyle = col;
 
       if ((b.type || "").includes("LASER")) {
-        // laser as vertical bar
         const w = 10;
         ctx.globalAlpha = (b.type || "").includes("WARN") ? 0.45 : 0.85;
         ctx.fillRect(s.x - w/2, 0, w, stageH);
@@ -793,6 +765,7 @@
   }
 
   function hideWaveBanner() { ui.waveBanner.style.display = "none"; }
+
   function startRenderLoop() {
     function frame() {
       if (latestSnap && state.userId) {
@@ -974,8 +947,6 @@
         shieldAcc:0, shieldLeft:0,
         feintQueue:[],
         dashLeft:0, dashDir:1,
-
-        laserQueue: [],
       };
     }
 
@@ -999,10 +970,7 @@
       st.boss = null;
 
       if (w===1) spawnFormation(["A"]);
-      if (w===2) {
-        // wave2は「時間中ランダム湧き」なので初期は少しだけ置く
-        spawnFormation(["A","B","C"]);
-      }
+      if (w===2) spawnFormation(["A","B","C"]);
       if (w===3) spawnFormation(["B","C"]);
       if (w===4) spawnBoss();
 
@@ -1069,7 +1037,6 @@
         if (!a.alive) continue;
         a.t = (a.t ?? 0) + dt;
         a.life = (a.life ?? 0) + dt;
-        // mild drift
         a.x = clamp(a.x + Math.sin(a.t*0.9)*0.004*dt, 0.12, 0.88);
         a.y = clamp(a.y + Math.sin(a.t*1.1)*0.003*dt, 0.12, 0.78);
         if (a.life > (a.lifeMax ?? 8.0)) a.alive = false;
@@ -1085,10 +1052,7 @@
           if (!a.alive) continue;
           const dx = a.x - b.x, dy = a.y - b.y;
           const r = (a.r ?? 0.06);
-          if (dx*dx + dy*dy <= r*r) {
-            b.dead = true;
-            break;
-          }
+          if (dx*dx + dy*dy <= r*r) { b.dead = true; break; }
         }
       }
     }
@@ -1110,19 +1074,15 @@
       st.enemies.push({ id:`en_${st.nextEnemyId++}`, type:"E", x0, x:x0, y:-0.06, t:0, alive:true, fireAcc:0 });
     }
 
-    // ★Wave2: 時間中ランダムに湧く + 爆弾
     function spawnWave2Random(dt) {
       if (st.wave !== 2) return;
-      // 0.9秒に1回くらい（乱数で少しブレ）
       st._w2SpawnAcc += dt / (0.75 + st.rng()*0.55);
       if (st._w2SpawnAcc < 1) return;
       st._w2SpawnAcc -= 1;
 
-      const type = randChoice(st.rng, ["A","B","B","C","A","C"]); // B/C多め
+      const type = randChoice(st.rng, ["A","B","B","C","A","C"]);
       const x0 = 0.10 + st.rng()*0.80;
       const y0 = -0.06 - st.rng()*0.06;
-
-      // 編隊じゃなく単体出現（落ちつつ少し揺れる）
       st.enemies.push({ id:`en_${st.nextEnemyId++}`, type, x0, x:x0, y:y0, t:0, alive:true, fireAcc:0, w2Solo:true });
     }
 
@@ -1139,17 +1099,10 @@
 
     function spawnBombsWave2(dt) {
       if (st.wave !== 2) return;
-      // 1.2秒に1回くらいで爆弾
       st._w2BombAcc += dt / (0.85 + st.rng()*0.85);
       if (st._w2BombAcc < 1) return;
       st._w2BombAcc -= 1;
-      st.hazards.push({
-        id:`hz_${st.nextHazardId++}`,
-        type:"BOMB",
-        x:0.08 + st.rng()*0.84,
-        y:-0.08,
-        alive:true
-      });
+      st.hazards.push({ id:`hz_${st.nextHazardId++}`, type:"BOMB", x:0.08 + st.rng()*0.84, y:-0.08, alive:true });
     }
 
     function movePlayerBullets(dt) {
@@ -1164,7 +1117,6 @@
         if ((b.type || "").includes("LASER_WARN")) {
           b.life = (b.life ?? 0) + dt;
           if (b.life >= (b.warnFor ?? 0.7)) {
-            // convert to laser
             b.type = "BOSS_LASER";
             b.life = 0;
             b.laserFor = b.laserFor ?? 0.35;
@@ -1221,8 +1173,6 @@
         if (!e.alive) continue;
         if (!(e.type==="A"||e.type==="B"||e.type==="C"||e.type==="E")) continue;
         const cfg = ENEMY[e.type];
-
-        // ★Wave2だけ B/C は3倍
         const mult = (st.wave===2 && (e.type==="B"||e.type==="C")) ? 3 : 1;
 
         e.fireAcc=(e.fireAcc??0)+(cfg.firePerSec*mult)*dt;
@@ -1233,15 +1183,7 @@
             const dx=t.x-e.x, dy=t.y-e.y;
             const ang=Math.atan2(dy,dx);
             const spd=cfg.bulletSpeed;
-            st.enemyBullets.push({
-              id:`eb_${st.nextEBulletId++}`,
-              x:e.x,y:e.y,
-              vx:Math.cos(ang)*spd, vy:Math.sin(ang)*spd,
-              type:"C_HOMING",
-              homingLeft:cfg.homingTime,
-              turnRate: cfg.turnRate,
-              dead:false
-            });
+            st.enemyBullets.push({ id:`eb_${st.nextEBulletId++}`, x:e.x,y:e.y, vx:Math.cos(ang)*spd, vy:Math.sin(ang)*spd, type:"C_HOMING", homingLeft:cfg.homingTime, turnRate: cfg.turnRate, dead:false });
           } else {
             const t=pickAlivePlayer();
             const aim=t?Math.max(-0.25, Math.min(0.25, (t.x-e.x)*1.2)):0;
@@ -1283,12 +1225,11 @@
       for (const b of st.enemyBullets) {
         if (b.dead) continue;
 
-        // laser collision (vertical bar)
         if ((b.type || "").includes("BOSS_LASER")) {
           for (const puid in st.players) {
             const p=st.players[puid]; if(!p.alive) continue;
             const dx = Math.abs((p.x ?? 0) - (b.x ?? 0));
-            if (dx < 0.03) { p.alive=false; }
+            if (dx < 0.03) p.alive=false;
           }
           continue;
         }
@@ -1396,24 +1337,15 @@
       }
     }
 
-    // ★新技：レーザー予告→発射（避けるのが楽しい）
     function pLaserWall(enrage) {
       const boss = st.boss;
       const n = 3 + (bossPhase(boss) >= 3 ? 1 : 0);
       for (let i=0;i<n;i++) {
         const x = 0.18 + st.rng()*0.64;
-        st.enemyBullets.push({
-          id:`eb_${st.nextEBulletId++}`,
-          x, y: 0.0,
-          type:"BOSS_LASER_WARN",
-          warnFor: 0.7 / Math.min(1.4, enrage),
-          laserFor: 0.35 + 0.10*st.rng(),
-          dead:false
-        });
+        st.enemyBullets.push({ id:`eb_${st.nextEBulletId++}`, x, y: 0.0, type:"BOSS_LASER_WARN", warnFor: 0.7 / Math.min(1.4, enrage), laserFor: 0.35 + 0.10*st.rng(), dead:false });
       }
     }
 
-    // ★新技：コーン弾幕（安全地帯を探すのが楽しい）
     function pCone(enrage) {
       const boss=st.boss;
       const target=pickAlivePlayer();
@@ -1422,8 +1354,8 @@
       const n = 16;
       const spd = BOSS.baseBulletSpeed * 1.05 * enrage;
       for (let i=0;i<n;i++){
-        const t = (i/(n-1))*2-1; // -1..1
-        const a = baseA + t*spread;
+        const tt = (i/(n-1))*2-1;
+        const a = baseA + tt*spread;
         st.enemyBullets.push({ id:`eb_${st.nextEBulletId++}`, x:boss.x,y:boss.y, vx:Math.cos(a)*spd, vy:Math.sin(a)*spd, type:"BOSS_CONE", dead:false });
       }
     }
@@ -1436,11 +1368,10 @@
       const over = Math.max(0, wave4Elapsed - WAVE_DUR[3]);
       const enrage = 1 + over * 0.015;
 
-      // 横移動増 + 前後(y)移動追加
       if (boss.dashLeft>0) {
         boss.dashLeft -= dt;
         boss.x += boss.dashDir*(BOSS.moveSpeed*3.3)*dt;
-        boss.y += 0.22*dt; // 前に出る
+        boss.y += 0.22*dt;
         if (boss.x<0.10){ boss.x=0.10; boss.dashDir=1; }
         if (boss.x>0.90){ boss.x=0.90; boss.dashDir=-1; }
       } else {
@@ -1507,17 +1438,13 @@
       const aliveEnemies = st.enemies.some(e => e.alive);
       const aliveHaz = st.hazards.some(h => h.alive);
       const anyEnemyBullets = st.enemyBullets.some(b => !b.dead);
-      const anyAbs = st.absorbers.some(a => a.alive);
-      // 吸収装置は残してもいいが、全滅復活はテンポ重視で「敵0なら復活」でOKにする
       return !aliveEnemies && !aliveHaz && !anyEnemyBullets && (waveRemainingSeconds(st.wave) > 3.0);
     }
 
     function respawnNonBossForWave(w) {
-      // waveは維持、残り時間まで繰り返し復活
       st.enemies = [];
       st.hazards = [];
       st.enemyBullets = [];
-      st.playerBullets = st.playerBullets.filter(b => !b.dead); // プレイヤー弾は残してもいいが軽く整理
       if (w === 1) spawnFormation(["A"]);
       if (w === 2) spawnFormation(["A","B","C"]);
       if (w === 3) spawnFormation(["B","C"]);
@@ -1534,7 +1461,6 @@
 
       st.elapsed += dt;
 
-      // wave決定（時間で進む）
       const t = st.elapsed;
       const tW1=WAVE_DUR[0], tW2=tW1+WAVE_DUR[1], tW3=tW2+WAVE_DUR[2];
       let newWave = st.wave;
@@ -1545,7 +1471,6 @@
 
       if (newWave !== st.wave) { st.wave = newWave; spawnWave(newWave); return; }
 
-      // プレイヤー入力
       for (const puid in st.players) {
         const p=st.players[puid];
         if (!p.alive) continue;
@@ -1566,17 +1491,18 @@
         }
       }
 
-      // Wave別処理
       if (st.wave === 1) {
         updateFormation(dt);
         enemyFire(dt);
         moveEnemyBullets(dt);
         collideEnemyBulletsToPlayers();
         collidePlayerBulletsToEnemies();
+
+        movePlayerBullets(dt);
+        st.playerBullets = st.playerBullets.filter(b=>!b.dead);
       }
 
       if (st.wave === 2) {
-        // ★時間中ランダム湧き + 爆弾
         spawnWave2Random(dt);
         spawnBombsWave2(dt);
 
@@ -1589,6 +1515,9 @@
         collideEnemyBulletsToPlayers();
         collideHazardsToPlayers();
         collidePlayerBulletsToEnemies();
+
+        movePlayerBullets(dt);
+        st.playerBullets = st.playerBullets.filter(b=>!b.dead);
       }
 
       if (st.wave === 3) {
@@ -1596,21 +1525,11 @@
         updateE(dt);
         updateHazards(dt);
 
-        // ★吸収装置出現頻度増（2.8秒に1回くらい）
         st._w3AbsAcc += dt / (2.2 + st.rng()*1.1);
         if (st._w3AbsAcc >= 1) {
           st._w3AbsAcc -= 1;
-          st.absorbers.push({
-            id:`ab_${st.nextAbsId++}`,
-            x: 0.14 + st.rng()*0.72,
-            y: 0.18 + st.rng()*0.45,
-            r: 0.07,
-            alive: true,
-            life: 0,
-            lifeMax: 9.0
-          });
+          st.absorbers.push({ id:`ab_${st.nextAbsId++}`, x: 0.14 + st.rng()*0.72, y: 0.18 + st.rng()*0.45, r: 0.07, alive: true, life: 0, lifeMax: 9.0, t: 0 });
         }
-
         updateAbsorbers(dt);
 
         enemyFire(dt);
@@ -1622,7 +1541,7 @@
         collideHazardsToPlayers();
 
         movePlayerBullets(dt);
-        absorbPlayerBullets(); // ★A：プレイヤー弾だけ吸収
+        absorbPlayerBullets();
         st.playerBullets = st.playerBullets.filter(b=>!b.dead);
 
         collidePlayerBulletsToEnemies();
@@ -1648,21 +1567,9 @@
         collidePlayerBulletsToBoss();
       }
 
-      // wave1/2: ここで弾移動
-      if (st.wave === 1 || st.wave === 2) {
-        movePlayerBullets(dt);
-        st.playerBullets = st.playerBullets.filter(b=>!b.dead);
-      }
+      if (st.wave !== 3) st.absorbers = [];
 
-      // wave1/2: wave3以外は吸収しない
-      if (st.wave !== 3) {
-        st.absorbers = [];
-      }
-
-      // ★ボス以外：全滅してて時間残ってるなら復活
-      if (isWaveClearedForRespawn()) {
-        respawnNonBossForWave(st.wave);
-      }
+      if (isWaveClearedForRespawn()) respawnNonBossForWave(st.wave);
 
       cleanupOutOfBounds();
     }
@@ -1904,13 +1811,6 @@
       const p1On = await isOnline(room.p1Uid);
       if (!(hostOn || p1On)) await deleteRoom(roomId);
 
-      if (room.state === "playing" && room.startedAt) {
-        if ((Date.now() - room.startedAt) >= ROOM_MAX_PLAY_MS) {
-          await update(roomRef, { state: "finished", finishedReason: "time_limit_7min", updatedAt: Date.now() }).catch(()=>{});
-          await update(ref(db, PATHS.roomIndex(roomId)), { state: "finished" }).catch(()=>{});
-        }
-      }
-
       await startHostLoopIfNeeded(roomId, room);
 
       if (room.state === "finished") {
@@ -1970,19 +1870,12 @@
         if (!roomNow) { clearInterval(timer); activeHostLoops.delete(roomId); return; }
         if (roomNow.state !== "playing") return;
 
-        if (roomNow.startedAt && (Date.now() - roomNow.startedAt) >= ROOM_MAX_PLAY_MS) {
-          await update(ref(db, PATHS.room(roomId)), { state: "finished", finishedReason: "time_limit_7min", updatedAt: Date.now() });
-          await update(ref(db, PATHS.roomIndex(roomId)), { state: "finished" });
-          return;
-        }
-
         const inputs = (await get(ref(db, PATHS.roomInputsRoot(roomId)))).val() || {};
-
         sim.applyInputs(inputs);
         sim.step(intervalMs / 1000);
 
-        // ★ボスを倒したら即クリア
         const snapGame = sim.snapshot();
+
         if (snapGame.bossKilled) {
           await set(ref(db, PATHS.roomGame(roomId)), snapGame);
           await update(ref(db, PATHS.room(roomId)), { state: "finished", finishedReason: "boss_killed", updatedAt: Date.now() });
@@ -2040,7 +1933,6 @@
     ui.changeNameBtn.onclick = () => { setScreen("name"); ui.nameHint.textContent = "名前を変更して決定してください"; };
 
     ui.createSoloBtn.onclick = async () => { if (!state.userName) return alert("名前を先に決定してください"); await createRoom(); };
-    ui.createMultiBtn.onclick = async () => { /* disabled */ };
 
     ui.leaveRoomBtn.onclick = async () => { await leaveRoom(true); };
 

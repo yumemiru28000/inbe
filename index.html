@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Invar Rooms (RTDB) - Smooth v2 (clearRect fix, dpr transform fix, id-based smoothing, fixed EMA)</title>
+  <title>Invader Rooms (RTDB) - Smooth FIX (clearRect, dpr transform, id smoothing, fixed EMA)</title>
   <style>
     :root { color-scheme: dark; }
     html, body { height: 100%; margin: 0; background:#05070b; color:#e8eefc; font-family: system-ui, -apple-system, Segoe UI, Roboto, "Noto Sans JP", sans-serif; overflow:hidden; }
@@ -211,7 +211,7 @@
             <button id="adminExitBtn" class="ghost small" style="display:none;">解除</button>
           </div>
           <div class="muted" style="margin-top:8px; font-size:12px;">
-            運営はこの端末だけ���ローカル）で有効になります。
+            運営はこの端末だけ（ローカル）で有効になります。
           </div>
         </div>
       </div>
@@ -355,6 +355,7 @@
     adminEnterBtn: $("#adminEnterBtn"),
     adminExitBtn: $("#adminExitBtn"),
 
+    screenTitle: $("#screenTitle"),
     youTag: $("#youTag"),
     modeTag: $("#modeTag"),
     stateTag: $("#stateTag"),
@@ -493,38 +494,35 @@
   }
   loadBg(1); loadBg(2); loadBg(3); loadBg(4);
 
-  // ---------------- Canvas sizing + DPR (FIXED) ----------------
+  // ---------------- Canvas sizing (FIX 1 & 2) ----------------
   const ctx = ui.canvas.getContext("2d");
+
   let stageW = 0;
   let stageH = 0;
-  let dpr = window.devicePixelRatio || 1;
+  let dpr = 1;
 
   function syncStageSizeCache() {
     const rect = ui.stage.getBoundingClientRect();
     stageW = rect.width;
     stageH = rect.height;
-  }
-
-  function applyDprTransform() {
-    // FIX #2: canonical transform
-    ctx.setTransform(1, 0, 0, 1, 0, 0);
-    ctx.scale(dpr, dpr);
-    // disable filtering for crisp rectangles (optional but stable)
-    ctx.imageSmoothingEnabled = false;
+    dpr = window.devicePixelRatio || 1;
   }
 
   function resizeCanvasToStage() {
     syncStageSizeCache();
-    dpr = window.devicePixelRatio || 1;
 
     const bw = Math.max(1, Math.floor(stageW * dpr));
     const bh = Math.max(1, Math.floor(stageH * dpr));
 
-    if (ui.canvas.width !== bw || ui.canvas.height !== bh) {
-      ui.canvas.width = bw;
-      ui.canvas.height = bh;
-    }
-    applyDprTransform();
+    if (ui.canvas.width !== bw) ui.canvas.width = bw;
+    if (ui.canvas.height !== bh) ui.canvas.height = bh;
+
+    // ✅ transform: identity then scale (stable)
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.scale(dpr, dpr);
+
+    // optional: keep smoothing on for shapes
+    ctx.imageSmoothingEnabled = true;
   }
 
   const ro = new ResizeObserver(() => resizeCanvasToStage());
@@ -536,7 +534,6 @@
     return { x: xNorm * stageW, y: yNorm * stageH };
   }
 
-  // 1.5x sizes
   const SIZE = {
     playerW: 24 * 1.5,
     playerH: 14 * 1.5,
@@ -549,7 +546,7 @@
     hazardR: 10 * 1.5,
   };
 
-  // ---------------- Background (precomputed stars) ----------------
+  // ---------------- Background draw ----------------
   const stars = [];
   function rebuildStars() {
     stars.length = 0;
@@ -589,9 +586,9 @@
       }
     }
 
+    ctx.fillStyle = "#ffffff";
     for (const s of stars) {
       ctx.globalAlpha = s.a;
-      ctx.fillStyle = "#ffffff";
       ctx.fillRect(s.x * stageW, s.y * stageH, 1, 1);
     }
     ctx.globalAlpha = 1;
@@ -623,110 +620,86 @@
     ctx.fillText(`BOSS HP ${boss.hp}/${boss.hpMax}  PHASE:${boss.phase}${shield}`, x + 6, y + 11);
   }
 
-  // ---------------- Render smoothing (FIXED: id-based + fixed EMA) ----------------
+  // ---------------- Smooth motion (FIX 3 & 4) ----------------
   let latestSnap = null;
   let renderState = null;
 
   function lerp(a,b,t){ return a + (b-a)*t; }
 
-  function ensureIdsInSnapshot(next) {
-    // IMPORTANT:
-    // - players already stable via uid
-    // - boss single
-    // - enemies/bullets/hazards had no id in DB snapshot, so we generate deterministic-ish ids on HOST side.
-    // This function is a safety net for older rooms that might still not have ids.
-    // If missing, we fallback to a generated id based on type+rounded position+index.
-    const addIds = (arr, prefix) => {
-      if (!Array.isArray(arr)) return;
-      for (let i=0;i<arr.length;i++) {
-        if (arr[i].id) continue;
-        const x = Math.round((arr[i].x ?? 0) * 1000);
-        const y = Math.round((arr[i].y ?? 0) * 1000);
-        const t = (arr[i].type ?? "t");
-        arr[i].id = `${prefix}_${t}_${x}_${y}_${i}`;
-      }
-    };
-    addIds(next.enemies, "en");
-    addIds(next.hazards, "hz");
-    addIds(next.playerBullets, "pb");
-    addIds(next.enemyBullets, "eb");
-  }
-
-  function smoothPlayersToward(nextPlayers, alpha) {
-    const prevMap = new Map((renderState.players || []).map(p => [p.uid, p]));
+  function smoothListById(key, alpha) {
+    const nextArr = latestSnap?.[key] || [];
+    const prevArr = renderState?.[key] || [];
+    const prevMap = new Map(prevArr.map(o => [o.id, o]));
     const out = [];
-    for (const np of nextPlayers) {
-      const rp = prevMap.get(np.uid);
-      if (!rp) {
-        out.push({ ...np });
-      } else {
-        out.push({
-          ...np,
-          x: lerp(rp.x, np.x, alpha),
-          y: lerp(rp.y, np.y, alpha),
-        });
-      }
-    }
-    renderState.players = out;
-  }
 
-  function smoothListById(key, nextArr, alpha) {
-    const prevMap = new Map((renderState[key] || []).map(o => [o.id, o]));
-    const out = [];
     for (const ne of nextArr) {
       const re = prevMap.get(ne.id);
-      if (!re) out.push({ ...ne });
-      else out.push({ ...ne, x: lerp(re.x, ne.x, alpha), y: lerp(re.y, ne.y, alpha) });
+      if (!re) {
+        out.push({ ...ne });
+      } else {
+        out.push({
+          ...ne,
+          x: lerp(re.x, ne.x, alpha),
+          y: lerp(re.y, ne.y, alpha),
+        });
+      }
     }
     renderState[key] = out;
   }
 
-  function smoothToward(next, alphaFixed) {
-    ensureIdsInSnapshot(next);
-
+  function smoothToward(alpha) {
+    if (!latestSnap) return;
     if (!renderState) {
-      renderState = JSON.parse(JSON.stringify(next));
+      renderState = JSON.parse(JSON.stringify(latestSnap));
       return;
     }
 
-    renderState.wave = next.wave;
-    renderState.elapsed = next.elapsed;
-    renderState.mode = next.mode;
-    renderState.tick = next.tick;
-    renderState.sentAt = next.sentAt;
+    // shallow fields
+    renderState.wave = latestSnap.wave;
+    renderState.elapsed = latestSnap.elapsed;
+    renderState.mode = latestSnap.mode;
+    renderState.tick = latestSnap.tick;
+    renderState.sentAt = latestSnap.sentAt;
 
-    smoothPlayersToward(next.players || [], alphaFixed);
+    // players by uid
+    const pMap = new Map((renderState.players||[]).map(p => [p.uid, p]));
+    renderState.players = (latestSnap.players||[]).map(np => {
+      const rp = pMap.get(np.uid) || { ...np };
+      rp.uid = np.uid; rp.color = np.color; rp.alive = np.alive; rp.score = np.score;
+      rp.x = lerp(rp.x ?? np.x, np.x, alpha);
+      rp.y = lerp(rp.y ?? np.y, np.y, alpha);
+      return rp;
+    });
 
-    if (next.boss) {
-      if (!renderState.boss) renderState.boss = { ...next.boss };
-      renderState.boss = {
-        ...next.boss,
-        x: lerp(renderState.boss.x, next.boss.x, alphaFixed),
-        y: lerp(renderState.boss.y, next.boss.y, alphaFixed),
-      };
+    // boss
+    if (latestSnap.boss) {
+      if (!renderState.boss) renderState.boss = { ...latestSnap.boss };
+      renderState.boss.alive = latestSnap.boss.alive;
+      renderState.boss.hp = latestSnap.boss.hp;
+      renderState.boss.hpMax = latestSnap.boss.hpMax;
+      renderState.boss.shieldLeft = latestSnap.boss.shieldLeft;
+      renderState.boss.phase = latestSnap.boss.phase;
+      renderState.boss.x = lerp(renderState.boss.x ?? latestSnap.boss.x, latestSnap.boss.x, alpha);
+      renderState.boss.y = lerp(renderState.boss.y ?? latestSnap.boss.y, latestSnap.boss.y, alpha);
     } else {
       renderState.boss = null;
     }
 
-    smoothListById("enemies", next.enemies || [], alphaFixed);
-    smoothListById("hazards", next.hazards || [], alphaFixed);
-    smoothListById("playerBullets", next.playerBullets || [], alphaFixed);
-    smoothListById("enemyBullets", next.enemyBullets || [], alphaFixed);
+    // ✅ id-based smoothing (no index vibration)
+    smoothListById("enemies", alpha);
+    smoothListById("hazards", alpha);
+    smoothListById("playerBullets", alpha);
+    smoothListById("enemyBullets", alpha);
   }
 
-  function clearFrame() {
-    // FIX #1: clear in *physical* pixels
-    // We temporarily reset transform so clearRect isn't scaled.
+  function drawState(g, myUid) {
+    // ✅ FIX 1: clear using internal buffer size (physical px) but we are scaled.
+    // Because we scale(dpr), clearing in CSS units is okay IF we clear whole logical canvas area.
+    // The safest is to reset transform temporarily and clear by internal size.
     ctx.save();
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.clearRect(0, 0, ui.canvas.width, ui.canvas.height);
     ctx.restore();
-    // ensure our drawing transform is correct after restore
-    applyDprTransform();
-  }
-
-  function drawState(g, myUid) {
-    clearFrame();
 
     ui.hud.style.display = "";
     drawBackgroundForWave(g.wave || 1);
@@ -747,7 +720,6 @@
 
     drawBossBar(g.boss);
 
-    // enemies
     for (const e of (g.enemies || [])) {
       const s = toScreen(e.x, e.y);
       ctx.fillStyle =
@@ -758,7 +730,6 @@
       ctx.fillRect(s.x - SIZE.enemyS/2, s.y - SIZE.enemyS/2, SIZE.enemyS, SIZE.enemyS);
     }
 
-    // hazards
     for (const hz of (g.hazards || [])) {
       const s = toScreen(hz.x, hz.y);
       ctx.fillStyle = "#ff4d6d";
@@ -767,7 +738,6 @@
       ctx.fill();
     }
 
-    // boss body
     if (g.boss && g.boss.alive) {
       const s = toScreen(g.boss.x, g.boss.y);
       ctx.fillStyle = g.boss.shieldLeft > 0 ? "#7bdff2" : "#ff3b3b";
@@ -778,7 +748,6 @@
       ctx.lineWidth = 1;
     }
 
-    // players
     for (const p of (g.players || [])) {
       const s = toScreen(p.x, p.y);
       const col = p.color === "red" ? "#ff3b3b" : "#2b78ff";
@@ -792,7 +761,6 @@
       }
     }
 
-    // player bullets (glow)
     ctx.save();
     ctx.shadowColor = "rgba(255,255,255,.55)";
     ctx.shadowBlur = 10;
@@ -803,7 +771,6 @@
     }
     ctx.restore();
 
-    // enemy bullets
     for (const b of (g.enemyBullets || [])) {
       const s = toScreen(b.x, b.y);
       const col =
@@ -818,7 +785,11 @@
   }
 
   function drawIdle(text) {
-    clearFrame();
+    ctx.save();
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.clearRect(0, 0, ui.canvas.width, ui.canvas.height);
+    ctx.restore();
+
     drawBackgroundForWave(1);
     ctx.fillStyle = "#9fb0cc";
     ctx.font = "16px system-ui";
@@ -826,12 +797,13 @@
     ui.hud.style.display = "none";
   }
 
-  // rAF loop: fixed EMA alpha (FIX #4)
+  // ✅ FIX 4: fixed EMA alpha (FPS independent, stable)
   const EMA_ALPHA = 0.18;
+
   function startRenderLoop() {
     function frame() {
       if (latestSnap && state.userId) {
-        smoothToward(latestSnap, EMA_ALPHA);
+        smoothToward(EMA_ALPHA);
         drawState(renderState || latestSnap, state.userId);
       }
       requestAnimationFrame(frame);
@@ -839,8 +811,8 @@
     requestAnimationFrame(frame);
   }
 
-  // ---------------- Rapid fire ----------------
-  const FIRE_RATE = 10;
+  // ---------------- Rapid fire (cooldown removed but safe) ----------------
+  const FIRE_RATE = 10; // shots/sec
 
   // ---------------- Input sender ----------------
   function bindInputSenderForRoom(userId, roomId, getIsPlayerFn) {
@@ -877,7 +849,7 @@
     };
   }
 
-  // ---------------- Game simulation (HOST adds stable IDs) ----------------
+  // ---------------- Game simulation (add stable ids) ----------------
   const WAVE_DUR = [30, 40, 90, 140];
   const SCORE = { A: 60, B: 120, C: 200, D: 0, E: 300, BOSS_HIT: 10, BOSS_KILL: 5000 };
   const ENEMY = {
@@ -925,11 +897,10 @@
       _hazAcc: 0,
       _eAcc: 0,
       _bossRespawnAcc: 0,
-
       nextEnemyId: 1,
       nextHazardId: 1,
-      nextPBId: 1,
-      nextEBId: 1,
+      nextPBulletId: 1,
+      nextEBulletId: 1,
 
       rng
     };
@@ -948,15 +919,19 @@
         st.enemies.push({
           id:`en_${st.nextEnemyId++}`,
           type,
-          baseX:x0+c*dx, baseY:y0+r*dy,
-          x:x0+c*dx, y:y0+r*dy,
-          alive:true, fireAcc:0
+          baseX:x0+c*dx,
+          baseY:y0+r*dy,
+          x:x0+c*dx,
+          y:y0+r*dy,
+          alive:true,
+          fireAcc:0
         });
       }
     }
 
     function spawnBoss() {
       st.boss = {
+        id: "boss",
         alive:true,
         x:BOSS.x, y:BOSS.y,
         hp:BOSS.hpMax, hpMax:BOSS.hpMax,
@@ -1058,8 +1033,8 @@
           if (!b.splitDone && b.life>=b.splitAt) {
             b.splitDone=true;
             const spd=Math.hypot(b.vx,b.vy);
-            st.enemyBullets.push({ id:`eb_${st.nextEBId++}`, x:b.x, y:b.y, vx:-0.18, vy:spd, type:"SPLIT_CHILD", dead:false });
-            st.enemyBullets.push({ id:`eb_${st.nextEBId++}`, x:b.x, y:b.y, vx: 0.18, vy:spd, type:"SPLIT_CHILD", dead:false });
+            st.enemyBullets.push({ id:`eb_${st.nextEBulletId++}`, x:b.x, y:b.y, vx:-0.18, vy:spd, type:"SPLIT_CHILD", dead:false });
+            st.enemyBullets.push({ id:`eb_${st.nextEBulletId++}`, x:b.x, y:b.y, vx: 0.18, vy:spd, type:"SPLIT_CHILD", dead:false });
             b.dead=true; continue;
           }
         }
@@ -1100,11 +1075,11 @@
             const dx=t.x-e.x, dy=t.y-e.y;
             const ang=Math.atan2(dy,dx);
             const spd=cfg.bulletSpeed;
-            st.enemyBullets.push({ id:`eb_${st.nextEBId++}`, x:e.x,y:e.y, vx:Math.cos(ang)*spd, vy:Math.sin(ang)*spd, type:"C_HOMING", homingLeft:cfg.homingTime, dead:false });
+            st.enemyBullets.push({ id:`eb_${st.nextEBulletId++}`, x:e.x,y:e.y, vx:Math.cos(ang)*spd, vy:Math.sin(ang)*spd, type:"C_HOMING", homingLeft:cfg.homingTime, dead:false });
           } else {
             const t=pickAlivePlayer();
             const aim=t?Math.max(-0.25, Math.min(0.25, (t.x-e.x)*1.2)):0;
-            st.enemyBullets.push({ id:`eb_${st.nextEBId++}`, x:e.x,y:e.y, vx:aim, vy:cfg.bulletSpeed, type:`${e.type}_SHOT`, dead:false });
+            st.enemyBullets.push({ id:`eb_${st.nextEBulletId++}`, x:e.x,y:e.y, vx:aim, vy:cfg.bulletSpeed, type:`${e.type}_SHOT`, dead:false });
           }
         }
       }
@@ -1164,7 +1139,7 @@
       const spd=BOSS.baseBulletSpeed*(1+0.08*(phase-1))*enrage;
       for (let i=0;i<n;i++){
         const a=Math.PI*2*(i/n);
-        st.enemyBullets.push({ id:`eb_${st.nextEBId++}`, x:boss.x,y:boss.y, vx:Math.cos(a)*spd, vy:Math.sin(a)*spd, type:"BOSS_RING", dead:false });
+        st.enemyBullets.push({ id:`eb_${st.nextEBulletId++}`, x:boss.x,y:boss.y, vx:Math.cos(a)*spd, vy:Math.sin(a)*spd, type:"BOSS_RING", dead:false });
       }
     }
     function pRightSide(enrage) {
@@ -1175,7 +1150,7 @@
         const a=(-Math.PI/2)+(i/(n-1))*(Math.PI/2);
         const vx=Math.cos(a)*spd+0.18;
         const vy=Math.sin(a)*spd+0.45;
-        st.enemyBullets.push({ id:`eb_${st.nextEBId++}`, x:boss.x,y:boss.y, vx,vy, type:"BOSS_RIGHT", dead:false });
+        st.enemyBullets.push({ id:`eb_${st.nextEBulletId++}`, x:boss.x,y:boss.y, vx,vy, type:"BOSS_RIGHT", dead:false });
       }
     }
     function pWave(enrage) {
@@ -1184,7 +1159,7 @@
       const n=6;
       for (let i=0;i<n;i++){
         const xoff=(i-(n-1)/2)*0.03;
-        st.enemyBullets.push({ id:`eb_${st.nextEBId++}`, x:boss.x+xoff,y:boss.y, vx:0, vy:spd, waveAmp:0.22, waveFreq:7.0, type:"BOSS_WAVE", dead:false });
+        st.enemyBullets.push({ id:`eb_${st.nextEBulletId++}`, x:boss.x+xoff,y:boss.y, vx:0, vy:spd, waveAmp:0.22, waveFreq:7.0, type:"BOSS_WAVE", dead:false });
       }
     }
     function pFeint(enrage) {
@@ -1197,7 +1172,7 @@
           const n=8;
           for (let i=0;i<n;i++){
             const a=Math.PI*2*(i/n);
-            st.enemyBullets.push({ id:`eb_${st.nextEBId++}`, x:boss.x,y:boss.y, vx:Math.cos(a)*spd, vy:Math.sin(a)*spd, type:"BOSS_FEINT", dead:false });
+            st.enemyBullets.push({ id:`eb_${st.nextEBulletId++}`, x:boss.x,y:boss.y, vx:Math.cos(a)*spd, vy:Math.sin(a)*spd, type:"BOSS_FEINT", dead:false });
           }
         }
       });
@@ -1211,14 +1186,14 @@
           const dx=target.x-boss.x, dy=target.y-boss.y;
           const a=Math.atan2(dy,dx);
           const spd=BOSS.baseBulletSpeed*1.9*enrage;
-          st.enemyBullets.push({ id:`eb_${st.nextEBId++}`, x:boss.x,y:boss.y, vx:Math.cos(a)*spd, vy:Math.sin(a)*spd, type:"BOSS_SNIPE", dead:false });
+          st.enemyBullets.push({ id:`eb_${st.nextEBulletId++}`, x:boss.x,y:boss.y, vx:Math.cos(a)*spd, vy:Math.sin(a)*spd, type:"BOSS_SNIPE", dead:false });
         }
       });
     }
     function pSplit(enrage) {
       const boss=st.boss;
       const spd=BOSS.baseBulletSpeed*1.1*enrage;
-      st.enemyBullets.push({ id:`eb_${st.nextEBId++}`, x:boss.x,y:boss.y, vx:0, vy:spd, splitAt:0.55, splitDone:false, type:"BOSS_SPLIT", dead:false });
+      st.enemyBullets.push({ id:`eb_${st.nextEBulletId++}`, x:boss.x,y:boss.y, vx:0, vy:spd, splitAt:0.55, splitDone:false, type:"BOSS_SPLIT", dead:false });
     }
     function pHomingWeak(enrage) {
       const boss=st.boss;
@@ -1226,7 +1201,7 @@
       const dx=target.x-boss.x, dy=target.y-boss.y;
       const a=Math.atan2(dy,dx);
       const spd=BOSS.baseBulletSpeed*1.05*enrage;
-      st.enemyBullets.push({ id:`eb_${st.nextEBId++}`, x:boss.x,y:boss.y, vx:Math.cos(a)*spd, vy:Math.sin(a)*spd, type:"C_HOMING", homingLeft:0.75, dead:false });
+      st.enemyBullets.push({ id:`eb_${st.nextEBulletId++}`, x:boss.x,y:boss.y, vx:Math.cos(a)*spd, vy:Math.sin(a)*spd, type:"C_HOMING", homingLeft:0.75, dead:false });
     }
     function pDash(enrage) {
       const boss=st.boss;
@@ -1239,7 +1214,7 @@
       const n=4;
       for (let i=0;i<n;i++){
         const xoff=(i-(n-1)/2)*0.05;
-        st.enemyBullets.push({ id:`eb_${st.nextEBId++}`, x:boss.x+xoff,y:boss.y, vx:0, vy:spd, waveAmp:0.30, waveFreq:9.5, type:"BOSS_SNAKE", dead:false });
+        st.enemyBullets.push({ id:`eb_${st.nextEBulletId++}`, x:boss.x+xoff,y:boss.y, vx:0, vy:spd, waveAmp:0.30, waveFreq:9.5, type:"BOSS_SNAKE", dead:false });
       }
     }
 
@@ -1338,7 +1313,7 @@
           p.fireAcc += FIRE_RATE * dt;
           while (p.fireAcc >= 1) {
             p.fireAcc -= 1;
-            st.playerBullets.push({ id:`pb_${st.nextPBId++}`, x:p.x, y:p.y-0.03, ownerUid:puid, dead:false });
+            st.playerBullets.push({ id:`pb_${st.nextPBulletId++}`, x:p.x, y:p.y-0.03, ownerUid:puid, dead:false });
           }
         } else {
           p.fireAcc = 0;
@@ -1382,6 +1357,7 @@
         uid:p.uid, x:p.x, y:p.y, alive:p.alive, score:p.score, color:p.color
       }));
       const boss = st.boss ? {
+        id: st.boss.id,
         x:st.boss.x, y:st.boss.y, alive:st.boss.alive,
         hp:st.boss.hp, hpMax:st.boss.hpMax,
         shieldLeft:st.boss.shieldLeft,
@@ -1491,7 +1467,7 @@
       return;
     }
 
-    const roomId = `room_${Date.now()}_${uuidShort()}`;
+    const roomId = `room_${Date.now()}_${Math.random().toString(16).slice(2,10)}`;
     const now = Date.now();
     const room = {
       roomId,

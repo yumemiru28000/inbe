@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Invader Rooms (RTDB) - Rapid Fire + Player-only Smooth</title>
+  <title>Invooms (RTDB) - 60fps Host Sim + Rapid Fire + Limits</title>
   <style>
     :root { color-scheme: dark; }
     html, body { height: 100%; margin: 0; background:#05070b; color:#e8eefc; font-family: system-ui, -apple-system, Segoe UI, Roboto, "Noto Sans JP", sans-serif; overflow:hidden; }
@@ -355,7 +355,6 @@
     adminEnterBtn: $("#adminEnterBtn"),
     adminExitBtn: $("#adminExitBtn"),
 
-    screenTitle: $("#screenTitle"),
     youTag: $("#youTag"),
     modeTag: $("#modeTag"),
     stateTag: $("#stateTag"),
@@ -485,12 +484,10 @@
   const waveBg = { 1: new Image(), 2: new Image(), 3: new Image(), 4: new Image() };
   const waveBgOk = { 1:false, 2:false, 3:false, 4:false };
   function loadBg(n) {
-    return new Promise((resolve) => {
-      const img = waveBg[n];
-      img.onload = () => { waveBgOk[n] = true; resolve(true); };
-      img.onerror = () => { waveBgOk[n] = false; resolve(false); };
-      img.src = `w${n}.png`;
-    });
+    const img = waveBg[n];
+    img.onload = () => { waveBgOk[n] = true; };
+    img.onerror = () => { waveBgOk[n] = false; };
+    img.src = `w${n}.png`;
   }
   loadBg(1); loadBg(2); loadBg(3); loadBg(4);
 
@@ -515,9 +512,7 @@
     const { w, h } = stageSize();
     return { x: xNorm * w, y: yNorm * h };
   }
-
-  // pixel snap to reduce shimmer
-  function snapPx(v) { return Math.round(v * 2) / 2; } // 0.5px step
+  function snapPx(v) { return Math.round(v * 2) / 2; }
   function toScreenSnapped(xNorm, yNorm) {
     const s = toScreen(xNorm, yNorm);
     return { x: snapPx(s.x), y: snapPx(s.y) };
@@ -529,7 +524,7 @@
     enemyS: 16 * 1.5,
     bossW: 52 * 1.5,
     bossH: 28 * 1.5,
-    bulletW: 6 * 1.5,     // 見やすく太く
+    bulletW: 6 * 1.5,
     bulletH: 18 * 1.5,
     eBulletS: 7 * 1.5,
     hazardR: 10 * 1.5,
@@ -578,7 +573,6 @@
     const x = (w - barW) / 2;
     const y = 10;
     const h = 14;
-
     const ratio = boss.hpMax > 0 ? Math.max(0, boss.hp / boss.hpMax) : 0;
 
     ctx.fillStyle = "rgba(10,14,22,.72)";
@@ -598,49 +592,7 @@
     ctx.fillText(`BOSS HP ${boss.hp}/${boss.hpMax}  PHASE:${boss.phase}${shield}`, x + 6, y + 11);
   }
 
-  // --- Player-only smoothing buffers ---
-  let snapA = null;
-  let snapB = null;
-  let latestSnap = null;
-
-  const lerp = (a,b,t)=> a + (b-a)*t;
-  const clamp01 = (v)=> Math.max(0, Math.min(1, v));
-
-  function buildPlayerSmoothedSnapshot(nowMs) {
-    // base = latest (so enemies/bullets are always current, no index mismatch)
-    if (!latestSnap) return null;
-    if (!snapA || !snapB) return latestSnap;
-
-    const t0 = snapA.sentAt || (nowMs - 100);
-    const t1 = snapB.sentAt || nowMs;
-    const denom = Math.max(1, (t1 - t0));
-
-    // render slightly behind
-    const renderTime = nowMs - 70;
-    const t = clamp01((renderTime - t0) / denom);
-
-    // clone latest snap (not too heavy)
-    const out = { ...latestSnap };
-
-    // players: uid match
-    const aMap = new Map((snapA.players||[]).map(p=>[p.uid,p]));
-    const bMap = new Map((snapB.players||[]).map(p=>[p.uid,p]));
-
-    out.players = (latestSnap.players||[]).map(p => {
-      const ap = aMap.get(p.uid);
-      const bp = bMap.get(p.uid);
-      if (!ap || !bp) return p;
-      return { ...p, x: lerp(ap.x, bp.x, t), y: lerp(ap.y, bp.y, t) };
-    });
-
-    // boss optional (1体なので安全) ただし横ブレが気になるなら外せる
-    if (snapA.boss && snapB.boss && latestSnap.boss) {
-      out.boss = { ...latestSnap.boss, x: lerp(snapA.boss.x, snapB.boss.x, t), y: lerp(snapA.boss.y, snapB.boss.y, t) };
-    }
-
-    return out;
-  }
-
+  // render state (no interpolation here; host sim is smooth now)
   function drawState(g, myUid) {
     resizeCanvasToStage();
     const { w, h } = stageSize();
@@ -665,7 +617,6 @@
 
     drawBossBar(g.boss);
 
-    // enemies (NO smoothing => no ghosts)
     for (const e of (g.enemies || [])) {
       const s = toScreenSnapped(e.x, e.y);
       ctx.fillStyle =
@@ -676,7 +627,6 @@
       ctx.fillRect(s.x - SIZE.enemyS/2, s.y - SIZE.enemyS/2, SIZE.enemyS, SIZE.enemyS);
     }
 
-    // hazards (NO smoothing)
     for (const hz of (g.hazards || [])) {
       const s = toScreenSnapped(hz.x, hz.y);
       ctx.fillStyle = "#ff4d6d";
@@ -685,7 +635,6 @@
       ctx.fill();
     }
 
-    // boss body (smoothed, but single object)
     if (g.boss && g.boss.alive) {
       const s = toScreenSnapped(g.boss.x, g.boss.y);
       ctx.fillStyle = g.boss.shieldLeft > 0 ? "#7bdff2" : "#ff3b3b";
@@ -696,7 +645,6 @@
       ctx.lineWidth = 1;
     }
 
-    // players (SMOOTHED + snapped)
     for (const p of (g.players || [])) {
       const s = toScreenSnapped(p.x, p.y);
       const col = p.color === "red" ? "#ff3b3b" : "#2b78ff";
@@ -710,7 +658,7 @@
       }
     }
 
-    // player bullets (NO smoothing but make visible + glow-ish)
+    // bullets: glow for visibility
     ctx.save();
     ctx.shadowBlur = 12;
     ctx.shadowColor = "rgba(255,255,255,.55)";
@@ -721,7 +669,6 @@
     }
     ctx.restore();
 
-    // enemy bullets (NO smoothing)
     ctx.save();
     ctx.shadowBlur = 10;
     for (const b of (g.enemyBullets || [])) {
@@ -750,21 +697,21 @@
     ui.hud.style.display = "none";
   }
 
+  // render loop: always draw latestSnap at 60fps
   function startRenderLoop() {
     function frame() {
-      if (state.userId) {
-        const g = buildPlayerSmoothedSnapshot(Date.now());
-        if (g) drawState(g, state.userId);
-      }
+      if (state.userId && latestSnap) drawState(latestSnap, state.userId);
       requestAnimationFrame(frame);
     }
     requestAnimationFrame(frame);
   }
 
-  // ---------------- Rapid fire tuning ----------------
-  // “クールタイム削除”だが、完全無制限は弾が爆増して重くなるので、現実的に高速(12/s)。
-  // もっと増やしたければ 20 などにしてOK（端末が重い場合は下げる）
-  const FIRE_RATE = 12;
+  // ---------------- Rapid fire + Limits (重要) ----------------
+  const FIRE_RATE = 15;                 // 連射速度（上げてもOK）
+  const MAX_PLAYER_BULLETS = 90;        // 連射で重くならないよう上限
+  const MAX_ENEMY_BULLETS  = 220;       // waveが進むほど増えるので上限
+  const MAX_ENEMIES        = 80;        // 敵上限
+  const MAX_HAZARDS        = 40;        // 落下物上限
 
   // ---------------- Input sender ----------------
   function bindInputSenderForRoom(userId, roomId, getIsPlayerFn) {
@@ -820,7 +767,7 @@
     shieldDuration: 1.8,
     moveSpeed: 0.18
   };
-  const clampN = (v,a,b)=>Math.max(a,Math.min(b,v));
+  const clamp = (v,a,b)=>Math.max(a,Math.min(b,v));
   const normalizeAngle=(a)=>{while(a>Math.PI)a-=Math.PI*2;while(a<-Math.PI)a+=Math.PI*2;return a;};
   const mulberry32=(a)=>()=>{let t=a+=0x6D2B79F5;t=Math.imul(t^(t>>>15),t|1);t^=t+Math.imul(t^(t>>>7),t|61);return((t^(t>>>14))>>>0)/4294967296;};
   const randChoice=(rng,arr)=>arr[Math.floor(rng()*arr.length)];
@@ -829,7 +776,6 @@
   function createHostSim(room) {
     const p1Uid = room.p1Uid;
     const p2Uid = room.p2Uid;
-
     const rng = mulberry32((Date.now() ^ 0x9e3779b9) >>> 0);
 
     const st = {
@@ -866,6 +812,7 @@
     function spawnFormation(types) {
       const rows=3, cols=6, x0=0.18, y0=0.14, dx=0.11, dy=0.085;
       for (let r=0;r<rows;r++) for (let c=0;c<cols;c++) {
+        if (st.enemies.length >= MAX_ENEMIES) return;
         const type = randChoice(st.rng, types);
         st.enemies.push({ id:`en_${st.nextEnemyId++}`, type, baseX:x0+c*dx, baseY:y0+r*dy, x:x0+c*dx, y:y0+r*dy, alive:true, fireAcc:0 });
       }
@@ -942,6 +889,7 @@
 
     function spawnHazards(dt) {
       if (st.wave!==3) return;
+      if (st.hazards.length >= MAX_HAZARDS) return;
       st._hazAcc += dt/8;
       if (st._hazAcc<1) return;
       st._hazAcc -= 1;
@@ -950,6 +898,7 @@
 
     function spawnEIfNeeded(dt) {
       if (st.wave!==3) return;
+      if (st.enemies.length >= MAX_ENEMIES) return;
       st._eAcc += dt/5;
       if (st._eAcc<1) return;
       st._eAcc -= 1;
@@ -960,6 +909,7 @@
     function movePlayerBullets(dt) {
       for (const b of st.playerBullets) b.y -= 0.85*dt;
       st.playerBullets = st.playerBullets.filter(b=>b.y>-0.1 && !b.dead);
+      if (st.playerBullets.length > MAX_PLAYER_BULLETS) st.playerBullets.splice(0, st.playerBullets.length - MAX_PLAYER_BULLETS);
     }
 
     function moveEnemyBullets(dt) {
@@ -974,8 +924,10 @@
           if (!b.splitDone && b.life>=b.splitAt) {
             b.splitDone=true;
             const spd=Math.hypot(b.vx,b.vy);
-            st.enemyBullets.push({ x:b.x, y:b.y, vx:-0.18, vy:spd, type:"SPLIT_CHILD", dead:false });
-            st.enemyBullets.push({ x:b.x, y:b.y, vx: 0.18, vy:spd, type:"SPLIT_CHILD", dead:false });
+            if (st.enemyBullets.length < MAX_ENEMY_BULLETS - 2) {
+              st.enemyBullets.push({ x:b.x, y:b.y, vx:-0.18, vy:spd, type:"SPLIT_CHILD", dead:false });
+              st.enemyBullets.push({ x:b.x, y:b.y, vx: 0.18, vy:spd, type:"SPLIT_CHILD", dead:false });
+            }
             b.dead=true; continue;
           }
         }
@@ -988,7 +940,7 @@
             const cur=Math.atan2(b.vy,b.vx);
             const diff=normalizeAngle(desired-cur);
             const maxTurn=2.2*dt;
-            const turned=cur+clampN(diff,-maxTurn,maxTurn);
+            const turned=cur+clamp(diff,-maxTurn,maxTurn);
             const spd=Math.hypot(b.vx,b.vy);
             b.vx=Math.cos(turned)*spd;
             b.vy=Math.sin(turned)*spd;
@@ -999,18 +951,23 @@
         if (b.y>1.2 || b.x<-0.2 || b.x>1.2) b.dead=true;
       }
       st.enemyBullets = st.enemyBullets.filter(b=>!b.dead);
+      if (st.enemyBullets.length > MAX_ENEMY_BULLETS) st.enemyBullets.splice(0, st.enemyBullets.length - MAX_ENEMY_BULLETS);
     }
 
     function enemyFire(dt) {
       const alivePlayers = Object.values(st.players).filter(p=>p.alive);
       if (!alivePlayers.length) return;
+
       for (const e of st.enemies) {
         if (!e.alive) continue;
         if (!(e.type==="A"||e.type==="B"||e.type==="C"||e.type==="E")) continue;
         const cfg = ENEMY[e.type];
         e.fireAcc=(e.fireAcc??0)+cfg.firePerSec*dt;
+
         while (e.fireAcc>=1) {
           e.fireAcc-=1;
+          if (st.enemyBullets.length >= MAX_ENEMY_BULLETS) break;
+
           if (e.type==="C") {
             const t=pickAlivePlayer(); if(!t) break;
             const dx=t.x-e.x, dy=t.y-e.y;
@@ -1019,7 +976,7 @@
             st.enemyBullets.push({ x:e.x,y:e.y, vx:Math.cos(ang)*spd, vy:Math.sin(ang)*spd, type:"C_HOMING", homingLeft:cfg.homingTime, dead:false });
           } else {
             const t=pickAlivePlayer();
-            const aim=t?clampN((t.x-e.x)*1.2,-0.25,0.25):0;
+            const aim=t?clamp((t.x-e.x)*1.2,-0.25,0.25):0;
             st.enemyBullets.push({ x:e.x,y:e.y, vx:aim, vy:cfg.bulletSpeed, type:`${e.type}_SHOT`, dead:false });
           }
         }
@@ -1079,6 +1036,7 @@
       const n = phase===1?10:phase===2?12:phase===3?14:16;
       const spd=BOSS.baseBulletSpeed*(1+0.08*(phase-1))*enrage;
       for (let i=0;i<n;i++){
+        if (st.enemyBullets.length >= MAX_ENEMY_BULLETS) break;
         const a=Math.PI*2*(i/n);
         st.enemyBullets.push({ x:boss.x,y:boss.y, vx:Math.cos(a)*spd, vy:Math.sin(a)*spd, type:"BOSS_RING", dead:false });
       }
@@ -1088,6 +1046,7 @@
       const spd=BOSS.baseBulletSpeed*1.05*enrage;
       const n=8;
       for (let i=0;i<n;i++){
+        if (st.enemyBullets.length >= MAX_ENEMY_BULLETS) break;
         const a=(-Math.PI/2)+(i/(n-1))*(Math.PI/2);
         const vx=Math.cos(a)*spd+0.18;
         const vy=Math.sin(a)*spd+0.45;
@@ -1099,6 +1058,7 @@
       const spd=BOSS.baseBulletSpeed*enrage;
       const n=6;
       for (let i=0;i<n;i++){
+        if (st.enemyBullets.length >= MAX_ENEMY_BULLETS) break;
         const xoff=(i-(n-1)/2)*0.03;
         st.enemyBullets.push({ x:boss.x+xoff,y:boss.y, vx:0, vy:spd, waveAmp:0.22, waveFreq:7.0, type:"BOSS_WAVE", dead:false });
       }
@@ -1112,6 +1072,7 @@
           const spd=BOSS.baseBulletSpeed*0.95*enrage;
           const n=8;
           for (let i=0;i<n;i++){
+            if (st.enemyBullets.length >= MAX_ENEMY_BULLETS) break;
             const a=Math.PI*2*(i/n);
             st.enemyBullets.push({ x:boss.x,y:boss.y, vx:Math.cos(a)*spd, vy:Math.sin(a)*spd, type:"BOSS_FEINT", dead:false });
           }
@@ -1124,6 +1085,7 @@
       boss.feintQueue.push({
         t: 0.65,
         pattern: () => {
+          if (st.enemyBullets.length >= MAX_ENEMY_BULLETS) return;
           const dx=target.x-boss.x, dy=target.y-boss.y;
           const a=Math.atan2(dy,dx);
           const spd=BOSS.baseBulletSpeed*1.9*enrage;
@@ -1133,12 +1095,14 @@
     }
     function pSplit(enrage) {
       const boss=st.boss;
+      if (st.enemyBullets.length >= MAX_ENEMY_BULLETS) return;
       const spd=BOSS.baseBulletSpeed*1.1*enrage;
       st.enemyBullets.push({ x:boss.x,y:boss.y, vx:0, vy:spd, splitAt:0.55, splitDone:false, type:"BOSS_SPLIT", dead:false });
     }
     function pHomingWeak(enrage) {
       const boss=st.boss;
       const target=pickAlivePlayer(); if(!target) return;
+      if (st.enemyBullets.length >= MAX_ENEMY_BULLETS) return;
       const dx=target.x-boss.x, dy=target.y-boss.y;
       const a=Math.atan2(dy,dx);
       const spd=BOSS.baseBulletSpeed*1.05*enrage;
@@ -1154,6 +1118,7 @@
       const spd=BOSS.baseBulletSpeed*0.95*enrage;
       const n=4;
       for (let i=0;i<n;i++){
+        if (st.enemyBullets.length >= MAX_ENEMY_BULLETS) break;
         const xoff=(i-(n-1)/2)*0.05;
         st.enemyBullets.push({ x:boss.x+xoff,y:boss.y, vx:0, vy:spd, waveAmp:0.30, waveFreq:9.5, type:"BOSS_SNAKE", dead:false });
       }
@@ -1174,7 +1139,7 @@
         if (boss.x>0.88){ boss.x=0.88; boss.dashDir=-1; }
       } else {
         boss.x += Math.sin(boss.time*0.9)*0.06*dt;
-        boss.x = clampN(boss.x,0.12,0.88);
+        boss.x = clamp(boss.x,0.12,0.88);
       }
 
       boss.shieldAcc += dt;
@@ -1226,6 +1191,7 @@
       return Object.values(st.players).every(p=>!p.alive);
     }
 
+    // 60fps step
     function step(dt) {
       st.tick++;
       st.elapsed += dt;
@@ -1248,12 +1214,13 @@
         const speed=0.45;
         if (inp.left) p.x -= speed*dt;
         if (inp.right) p.x += speed*dt;
-        p.x = clampN(p.x, 0.05, 0.95);
+        p.x = clamp(p.x, 0.05, 0.95);
 
         if (inp.shoot) {
           p.fireAcc += FIRE_RATE * dt;
           while (p.fireAcc >= 1) {
             p.fireAcc -= 1;
+            if (st.playerBullets.length >= MAX_PLAYER_BULLETS) break;
             st.playerBullets.push({ x:p.x, y:p.y-0.03, ownerUid:puid });
           }
         } else {
@@ -1291,7 +1258,6 @@
       }
 
       movePlayerBullets(dt);
-      st.playerBullets = st.playerBullets.filter(b=>!b.dead);
     }
 
     function snapshot() {
@@ -1313,8 +1279,8 @@
         players: playersArr,
         enemies: st.enemies.filter(e=>e.alive).map(e=>({x:e.x,y:e.y,type:e.type})),
         hazards: st.hazards.filter(h=>h.alive).map(h=>({x:h.x,y:h.y,type:h.type})),
-        playerBullets: st.playerBullets.filter(b=>!b.dead).map(b=>({x:b.x,y:b.y,ownerUid:b.ownerUid})),
-        enemyBullets: st.enemyBullets.filter(b=>!b.dead).map(b=>({x:b.x,y:b.y,type:b.type})),
+        playerBullets: st.playerBullets.map(b=>({x:b.x,y:b.y,ownerUid:b.ownerUid})),
+        enemyBullets: st.enemyBullets.map(b=>({x:b.x,y:b.y,type:b.type})),
         boss,
         sentAt: Date.now()
       };
@@ -1380,9 +1346,6 @@
     ui.retireBtn.style.display = "none";
 
     latestSnap = null;
-    snapA = null;
-    snapB = null;
-
     if (goLobby) setScreen("lobby");
   }
 
@@ -1504,8 +1467,8 @@
     });
   }
 
-  // ---------------- Subscribe room + host loop ----------------
-  const activeHostLoops = new Map(); // roomId -> timer
+  // ---------------- Subscribe room + host loop (60fps sim, 12Hz DB) ----------------
+  const activeHostLoops = new Map(); // roomId -> { rafId, lastTs, lastDbSent, sim }
 
   function subscribeRoom(roomId) {
     const roomRef = ref(db, PATHS.room(roomId));
@@ -1519,7 +1482,7 @@
       state.lastRoom = room;
 
       if (!room) {
-        latestSnap = null; snapA = null; snapB = null;
+        latestSnap = null;
         drawIdle("部屋が削除されました");
         await leaveRoom(true);
         return;
@@ -1582,13 +1545,6 @@
     state.gameUnsub = onValue(gameRef, (snap) => {
       const g = snap.val() || null;
       latestSnap = g;
-
-      // player smoothing buffer: keep last two snapshots only
-      if (g) {
-        if (!snapA) { snapA = g; snapB = g; }
-        else { snapA = snapB; snapB = g; }
-      }
-
       if (!g) drawIdle("準備中 / 観戦待機中");
     });
   }
@@ -1608,7 +1564,7 @@
 
     if (existing) {
       if (!isHost || !isPlaying) {
-        clearInterval(existing);
+        cancelAnimationFrame(existing.rafId);
         activeHostLoops.delete(roomId);
       }
       return;
@@ -1616,50 +1572,237 @@
     if (!isHost || !isPlaying) return;
 
     const sim = createHostSim(room);
+
+    // send initial snapshot
     await set(ref(db, PATHS.roomGame(roomId)), sim.snapshot());
 
-    const hz = 15;
-    const intervalMs = Math.floor(1000 / hz);
+    const loop = {
+      rafId: 0,
+      lastTs: performance.now(),
+      lastDbSent: 0,
+      sim,
+    };
 
-    const timer = setInterval(async () => {
-      const roomNow = (await get(ref(db, PATHS.room(roomId)))).val();
-      if (!roomNow) {
-        clearInterval(timer);
+    const roomRef = ref(db, PATHS.room(roomId));
+    const gameRef = ref(db, PATHS.roomGame(roomId));
+
+    const DB_HZ = 12;
+    const DB_INTERVAL = 1000 / DB_HZ;
+
+    const stepFrame = async (ts) => {
+      const roomNow = (await get(roomRef)).val();
+      if (!roomNow) { activeHostLoops.delete(roomId); return; }
+      if (roomNow.state !== "playing") {
+        loop.rafId = requestAnimationFrame(stepFrame);
+        return;
+      }
+
+      // 7min finish
+      if (roomNow.startedAt && (Date.now() - roomNow.startedAt) >= ROOM_MAX_PLAY_MS) {
+        await update(roomRef, { state: "finished", finishedReason: "time_limit_7min", updatedAt: Date.now() });
+        await update(ref(db, PATHS.roomIndex(roomId)), { state: "finished" });
         activeHostLoops.delete(roomId);
         return;
       }
-      if (roomNow.state !== "playing") return;
 
-      if (roomNow.startedAt && (Date.now() - roomNow.startedAt) >= ROOM_MAX_PLAY_MS) {
-        await update(ref(db, PATHS.room(roomId)), { state: "finished", finishedReason: "time_limit_7min", updatedAt: Date.now() });
-        await update(ref(db, PATHS.roomIndex(roomId)), { state: "finished" });
-        return;
-      }
-
+      // idle timeout
       const inputs = (await get(ref(db, PATHS.roomInputsRoot(roomId)))).val() || {};
       const now = Date.now();
       const uids = [roomNow.p1Uid, roomNow.p2Uid].filter(Boolean);
       const lastTimes = uids.map(u => inputs?.[u]?.t ?? 0);
       const allIdle = uids.length > 0 && lastTimes.every(t => (now - t) >= 60000);
       if (allIdle) {
-        await update(ref(db, PATHS.room(roomId)), { state: "finished", finishedReason: "idle_timeout", updatedAt: Date.now() });
+        await update(roomRef, { state: "finished", finishedReason: "idle_timeout", updatedAt: Date.now() });
         await update(ref(db, PATHS.roomIndex(roomId)), { state: "finished" });
+        activeHostLoops.delete(roomId);
         return;
       }
 
-      sim.applyInputs(inputs);
-      sim.step(intervalMs / 1000);
+      const dt = Math.min(0.033, Math.max(0.001, (ts - loop.lastTs) / 1000)); // clamp 1ms..33ms
+      loop.lastTs = ts;
 
-      if (sim.isAllDead()) {
-        await update(ref(db, PATHS.room(roomId)), { state: "finished", finishedReason: "all_dead", updatedAt: Date.now() });
+      loop.sim.applyInputs(inputs);
+      loop.sim.step(dt);
+
+      if (loop.sim.isAllDead()) {
+        await update(roomRef, { state: "finished", finishedReason: "all_dead", updatedAt: Date.now() });
         await update(ref(db, PATHS.roomIndex(roomId)), { state: "finished" });
+        activeHostLoops.delete(roomId);
         return;
       }
 
-      await set(ref(db, PATHS.roomGame(roomId)), sim.snapshot());
-    }, intervalMs);
+      // send to DB at 12Hz
+      if ((ts - loop.lastDbSent) >= DB_INTERVAL) {
+        loop.lastDbSent = ts;
+        await set(gameRef, loop.sim.snapshot());
+      }
 
-    activeHostLoops.set(roomId, timer);
+      loop.rafId = requestAnimationFrame(stepFrame);
+    };
+
+    loop.rafId = requestAnimationFrame(stepFrame);
+    activeHostLoops.set(roomId, loop);
+  }
+
+  // ---------------- Rooms + navigation ----------------
+  function bindRoomsList() {
+    onValue(ref(db, PATHS.roomsIndex), (snap) => {
+      const rooms = snap.val() || {};
+      const entries = Object.values(rooms).sort((a,b) => (b.createdAt||0)-(a.createdAt||0));
+
+      ui.roomsList.innerHTML = "";
+      if (entries.length === 0) {
+        ui.roomsList.innerHTML = `<div class="muted">部屋がありません。左から作成してください。</div>`;
+        return;
+      }
+
+      for (const r of entries) {
+        const div = document.createElement("div");
+        div.className = "roomRow";
+
+        const left = document.createElement("div");
+        const top = document.createElement("div");
+        top.className = "roomTop";
+        top.innerHTML = `
+          <span class="pill"><span class="dot ${stateDotClass(r.state)}"></span>${roomStateLabel(r.state || "idle")}</span>
+          <span class="tag">#${r.roomId.slice(-6)}</span>
+          <span class="tag">${r.mode || "-"}</span>
+          <span class="muted">host: ${escapeHtml(r.hostName || "?")}</span>
+        `;
+        const meta = document.createElement("div");
+        meta.className = "roomMeta";
+        const sa = r.startedAt ? ` / started: ${new Date(r.startedAt).toLocaleTimeString()}` : "";
+        meta.textContent = `created: ${new Date(r.createdAt || Date.now()).toLocaleTimeString()}${sa}`;
+        left.appendChild(top);
+        left.appendChild(meta);
+
+        const btns = document.createElement("div");
+        btns.className = "roomBtns";
+
+        const joinBtn = document.createElement("button");
+        joinBtn.className = "secondary small";
+        joinBtn.textContent = "入室";
+        joinBtn.onclick = async () => { await enterRoom(r.roomId); };
+
+        const watchBtn = document.createElement("button");
+        watchBtn.className = "ghost small";
+        watchBtn.textContent = "観戦";
+        watchBtn.onclick = async () => { await enterRoom(r.roomId); };
+
+        btns.appendChild(joinBtn);
+        btns.appendChild(watchBtn);
+
+        if (adminMode) {
+          const adminKill = document.createElement("button");
+          adminKill.className = "danger small";
+          adminKill.textContent = "運営:強制終了";
+          adminKill.onclick = async () => {
+            await update(ref(db, PATHS.room(r.roomId)), { state: "finished", finishedReason: "admin_kill", updatedAt: Date.now() }).catch(()=>{});
+            await update(ref(db, PATHS.roomIndex(r.roomId)), { state: "finished" }).catch(()=>{});
+          };
+
+          const adminDel = document.createElement("button");
+          adminDel.className = "danger small";
+          adminDel.textContent = "運営:削除";
+          adminDel.onclick = async () => { await deleteRoom(r.roomId); };
+
+          btns.appendChild(adminKill);
+          btns.appendChild(adminDel);
+        }
+
+        div.appendChild(left);
+        div.appendChild(btns);
+        ui.roomsList.appendChild(div);
+      }
+    });
+  }
+
+  async function countRooms() {
+    const snap = await get(ref(db, PATHS.roomsIndex));
+    const v = snap.val() || {};
+    return Object.keys(v).length;
+  }
+
+  function stateDotClass(st) {
+    if (st === "playing") return "playing";
+    if (st === "preparing") return "preparing";
+    if (st === "recruiting") return "recruiting";
+    if (st === "finished") return "finished";
+    return "";
+  }
+  function roomStateLabel(st) {
+    if (st === "recruiting") return "募集中";
+    if (st === "preparing") return "準備中";
+    if (st === "playing") return "プレイ中";
+    if (st === "finished") return "終了";
+    return "待機";
+  }
+
+  async function createRoom(mode) {
+    const roomsCount = await countRooms();
+    if (roomsCount >= MAX_ROOMS) {
+      ui.createHint.textContent = "部屋数が上限（5）です。誰かが部屋を削除してから作成してください。";
+      return;
+    }
+
+    const roomId = `room_${Date.now()}_${uuidShort()}`;
+    const now = Date.now();
+    const room = {
+      roomId,
+      state: (mode === "multi") ? "recruiting" : "preparing",
+      mode,
+      hostUid: state.userId,
+      hostName: state.userName,
+      p1Uid: state.userId,
+      p2Uid: null,
+      recruiting: mode === "multi" ? { joinerUid: null } : null,
+      ready: { [state.userId]: false },
+      createdAt: now,
+      updatedAt: now,
+      startedAt: 0
+    };
+
+    await set(ref(db, PATHS.room(roomId)), room);
+    await set(ref(db, PATHS.roomIndex(roomId)), { roomId, state: room.state, mode, hostName: state.userName, createdAt: now, startedAt: 0 });
+
+    await enterRoom(roomId);
+  }
+
+  async function deleteRoom(roomId) {
+    await remove(ref(db, PATHS.room(roomId)));
+    await remove(ref(db, PATHS.roomIndex(roomId)));
+  }
+
+  async function leaveRoom(goLobby = true) {
+    if (state.stopInput) { state.stopInput(); state.stopInput = null; }
+    if (state.roomUnsub) { state.roomUnsub(); state.roomUnsub = null; }
+    if (state.gameUnsub) { state.gameUnsub(); state.gameUnsub = null; }
+    state.roomId = null;
+    ui.roomTag.style.display = "none";
+    ui.roomTag.textContent = "room:-";
+    ui.readyBtn.style.display = "none";
+    ui.retireBtn.style.display = "none";
+    latestSnap = null;
+    if (goLobby) setScreen("lobby");
+  }
+
+  async function enterRoom(roomId) {
+    await leaveRoom(false);
+    state.roomId = roomId;
+    ui.roomTag.style.display = "";
+    ui.roomTag.textContent = `room:${roomId.slice(-6)}`;
+    setScreen("game");
+
+    state.stopInput = bindInputSenderForRoom(state.userId, roomId, () => {
+      const room = state.lastRoom;
+      return room?.state === "playing" && isPlayer(room);
+    });
+
+    subscribeRoom(roomId);
+  }
+
+  function isPlayer(room) {
+    return room?.p1Uid === state.userId || room?.p2Uid === state.userId;
   }
 
   // ---------------- Boot ----------------
@@ -1674,7 +1817,6 @@
     await bindPresence(state.userId);
     bindLeaderboard();
     bindRoomsList();
-
     startRenderLoop();
 
     state.userName = await getMyName(state.userId);

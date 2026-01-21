@@ -929,7 +929,7 @@ function stopBGM() {
       boss: null,
     // --- ここに追加する！！ ---
     enemySpawnAcc: 0,         // ←これを追加
-    enemySpawnInterval: 2,    // ←これを追加。値は好きに
+    enemySpawnInterval: 0.2,    // ←これを追加。値は好きに
 
       _hazAcc: 0,
       _eAcc: 0,
@@ -1362,24 +1362,26 @@ function step(dt) {
   }
 
   // ------------------- ここから追加：敵をWave中ずっと出し続ける -------------------
-  // createHostSimでst.enemySpawnAcc, st.enemySpawnIntervalを初期化しておくこと！(例: st.enemySpawnInterval=2)
-  if (st.wave <= 3) {
-    st.enemySpawnAcc += dt;
-    while (st.enemySpawnAcc >= st.enemySpawnInterval) {
-      st.enemySpawnAcc -= st.enemySpawnInterval;
-      // --- WaveごとにenemyType変化させたい場合ここで分岐
-      let type = "A";
-      if (st.wave === 2) type = Math.random() < 0.5 ? "A" : "B";
-      if (st.wave === 3) type = Math.random() < 0.5 ? "B" : "C";
-      const x = 0.18 + st.rng() * 0.64;
+// Wave本体進行でfor文の前、毎フレーム敵を大量スポーン
+if (st.wave <= 3) {
+  // Waveによって出現間隔や数を変える
+  let interval = st.wave === 1 ? 0.38 : st.wave === 2 ? 0.31 : 0.24; // だんだん早く
+  let batch = st.wave === 1 ? 1 : st.wave === 2 ? 2 : 3; // 1回で何体スポーンか
+  st.enemySpawnAcc += dt;
+  while (st.enemySpawnAcc >= interval) {
+    st.enemySpawnAcc -= interval;
+    for (let i = 0; i < batch; ++i) {
+      const x = 0.08 + st.rng() * 0.84;    // 画面のもっと端から幅広く
+      const y = -0.12 - st.rng() * 0.08;   // もっと上から（画面外上部からスポーン）
       st.enemies.push({
         id: `en_${st.nextEnemyId++}`,
-        type,
-        baseX: x, baseY: 0.1, x: x, y: 0.1,
+        type: "A",  // 固定
+        baseX: x, baseY: y, x: x, y: y,
         alive: true, fireAcc: 0
       });
     }
   }
+}
   // --------------------------------------------------------------------------
 
   for (const puid in st.players) {

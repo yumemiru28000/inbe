@@ -891,7 +891,7 @@ function stopBGM() {
     D: { fallSpeed: 0.20 }
   };
   const BOSS = {
-    hpMax: 1000,
+    hpMax: 500,
     x: 0.5,
     y: 0.16,
     baseBulletSpeed: 0.99,
@@ -1367,7 +1367,7 @@ function step(dt) {
 if (st.wave <= 3) {
   // 雑魚スポーンロジックそのまま
   let interval = st.wave === 1 ? 0.38 : st.wave === 2 ? 0.31 : 0.24;
-  let batch = st.wave === 1 ? 1 : st.wave === 1 ? 1 : 1; // 好きな数
+  let batch = st.wave === 1 ? 1 : st.wave === 2 ? 1 : 1; // 好きな数
   st.enemySpawnAcc += dt;
   while (st.enemySpawnAcc >= interval) {
     st.enemySpawnAcc -= interval;

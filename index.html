@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Invader Rooms (RTDB) - Smooth FIX + Despawn + Render Reset</title>
+  <title>Invader Rooms (RTDB) - Solo Only + Host Lock + Wave Banner</title>
   <style>
     :root { color-scheme: dark; }
     html, body { height: 100%; margin: 0; background:#05070b; color:#e8eefc; font-family: system-ui, -apple-system, Segoe UI, Roboto, "Noto Sans JP", sans-serif; overflow:hidden; }
@@ -138,11 +138,44 @@
       color:#e8eefc;
       min-width: 280px;
       font-size: 13px;
+      z-index: 10;
     }
     #hud .muted { font-size: 12px; }
 
-    #ann { position:absolute; inset:0; display:none; align-items:center; justify-content:center; background: rgba(0,0,0,.60); }
+    #ann { position:absolute; inset:0; display:none; align-items:center; justify-content:center; background: rgba(0,0,0,.60); z-index: 20; }
     #ann .card { width:min(560px, 92vw); }
+
+    /* ★追加：Waveバナー */
+    #waveBanner {
+      position:absolute;
+      inset:0;
+      display:none;
+      align-items:center;
+      justify-content:center;
+      z-index: 30;
+      pointer-events:none;
+      background: rgba(0,0,0,.35);
+    }
+    #waveBanner .inner {
+      padding: 18px 22px;
+      border-radius: 18px;
+      border: 1px solid rgba(31,42,58,.85);
+      background: rgba(10,14,22,.72);
+      backdrop-filter: blur(8px);
+      text-align:center;
+      min-width: min(520px, 90vw);
+      box-shadow: 0 14px 40px rgba(0,0,0,.35);
+    }
+    #waveBanner .title {
+      font-weight: 1000;
+      letter-spacing: .8px;
+      font-size: 34px;
+      margin-bottom: 6px;
+    }
+    #waveBanner .sub {
+      color:#a8b3c7;
+      font-size: 14px;
+    }
 
     #modal { position:fixed; inset:0; display:none; align-items:center; justify-content:center; background: rgba(0,0,0,.60); z-index: 50; }
     #modal .card { width:min(560px, 92vw); }
@@ -190,7 +223,7 @@
 
           <div class="row" style="margin-top:12px;">
             <button id="createSoloBtn">ソロ部屋</button>
-            <button id="createMultiBtn">マルチ部屋</button>
+            <button id="createMultiBtn" style="display:none;">マルチ部屋</button>
           </div>
           <div class="muted" id="createHint" style="margin-top:10px;"></div>
 
@@ -223,7 +256,7 @@
             <span class="tag">最大5</span>
           </div>
           <div class="muted" style="margin-top:6px;">
-            同時プレイOK。プレイ中の部屋でも <b>観戦</b> できます。
+            ソロ専用（マルチ機能は削除済み）
           </div>
           <div id="roomsList" style="margin-top:12px;"></div>
         </div>
@@ -264,6 +297,13 @@
             <div id="hudLine3" class="muted" style="margin-top:6px;"></div>
           </div>
 
+          <div id="waveBanner">
+            <div class="inner">
+              <div class="title" id="waveBannerTitle">WAVE 1/4</div>
+              <div class="sub" id="waveBannerSub">5秒後に開始</div>
+            </div>
+          </div>
+
           <div id="ann">
             <div class="card">
               <div style="font-weight:1000; margin-bottom:6px;" id="annTitle"></div>
@@ -289,7 +329,7 @@
 
 <script type="module">
   import { initializeApp } from "https://www.gstatic.com/firebasejs/12.8.0/firebase-app.js";
-  import { getDatabase, ref, onValue, get, set, update, remove, runTransaction, serverTimestamp, onDisconnect } from "https://www.gstatic.com/firebasejs/12.8.0/firebase-database.js";
+  import { getDatabase, ref, onValue, get, set, update, remove, serverTimestamp, onDisconnect } from "https://www.gstatic.com/firebasejs/12.8.0/firebase-database.js";
   import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/12.8.0/firebase-auth.js";
 
   const firebaseConfig = {
@@ -318,7 +358,6 @@
     roomInputsRoot: (roomId) => `rooms/${roomId}/inputs`,
     roomInputs: (roomId, uid) => `rooms/${roomId}/inputs/${uid}`,
     roomReady: (roomId, uid) => `rooms/${roomId}/ready/${uid}`,
-    roomRecruitJoiner: (roomId) => `rooms/${roomId}/recruiting/joinerUid`,
   };
 
   const $ = (q) => document.querySelector(q);
@@ -365,6 +404,10 @@
     hudLine2: $("#hudLine2"),
     hudLine3: $("#hudLine3"),
 
+    waveBanner: $("#waveBanner"),
+    waveBannerTitle: $("#waveBannerTitle"),
+    waveBannerSub: $("#waveBannerSub"),
+
     ann: $("#ann"),
     annTitle: $("#annTitle"),
     annBody: $("#annBody"),
@@ -387,23 +430,6 @@
 
   function showAnn(title, body) { ui.annTitle.textContent = title; ui.annBody.textContent = body; ui.ann.style.display = "flex"; }
   function hideAnn(){ ui.ann.style.display = "none"; }
-
-  function showModal(title, body) { ui.modalTitle.textContent = title; ui.modalBody.textContent = body; ui.modal.style.display = "flex"; }
-  function hideModal(){ ui.modal.style.display = "none"; }
-  function modalAsk(title, body) {
-    return new Promise((resolve) => {
-      showModal(title, body);
-      const yes = () => { cleanup(); resolve(true); };
-      const no = () => { cleanup(); resolve(false); };
-      const cleanup = () => {
-        ui.modalYes.removeEventListener("click", yes);
-        ui.modalNo.removeEventListener("click", no);
-        hideModal();
-      };
-      ui.modalYes.addEventListener("click", yes);
-      ui.modalNo.addEventListener("click", no);
-    });
-  }
 
   let adminMode = (localStorage.getItem("inv_admin") === "1");
   function setAdminMode(v) {
@@ -458,18 +484,6 @@
     });
   }
 
-  const waveBg = { 1: new Image(), 2: new Image(), 3: new Image(), 4: new Image() };
-  const waveBgOk = { 1:false, 2:false, 3:false, 4:false };
-  function loadBg(n) {
-    return new Promise((resolve) => {
-      const img = waveBg[n];
-      img.onload = () => { waveBgOk[n] = true; resolve(true); };
-      img.onerror = () => { waveBgOk[n] = false; resolve(false); };
-      img.src = `w${n}.png`;
-    });
-  }
-  loadBg(1); loadBg(2); loadBg(3); loadBg(4);
-
   const ctx = ui.canvas.getContext("2d");
   let stageW = 0, stageH = 0, dpr = 1;
 
@@ -479,7 +493,6 @@
     stageH = rect.height;
     dpr = window.devicePixelRatio || 1;
   }
-
   function resizeCanvasToStage() {
     syncStageSizeCache();
     const bw = Math.max(1, Math.floor(stageW * dpr));
@@ -490,7 +503,6 @@
     ctx.scale(dpr, dpr);
     ctx.imageSmoothingEnabled = true;
   }
-
   const ro = new ResizeObserver(() => resizeCanvasToStage());
   ro.observe(ui.stage);
   window.addEventListener("resize", resizeCanvasToStage);
@@ -510,15 +522,12 @@
     hazardR: 10 * 1.5,
   };
 
-  const stars = [];
-  function rebuildStars() {
-    stars.length = 0;
-    const n = 140;
-    for (let i=0;i<n;i++) {
-      stars.push({ x: (Math.random()*0.98+0.01), y: (Math.random()*0.98+0.01), a: Math.random()*0.35+0.05 });
-    }
+  function clearFull() {
+    ctx.save();
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.clearRect(0, 0, ui.canvas.width, ui.canvas.height);
+    ctx.restore();
   }
-  rebuildStars();
 
   function drawBackgroundForWave(wave) {
     const g = ctx.createLinearGradient(0, 0, 0, stageH);
@@ -528,29 +537,6 @@
     if (wave === 4) { g.addColorStop(0, "#12071a"); g.addColorStop(1, "#05070b"); }
     ctx.fillStyle = g;
     ctx.fillRect(0, 0, stageW, stageH);
-
-    if (waveBgOk[wave]) {
-      const img = waveBg[wave];
-      const iw = img.naturalWidth || img.width;
-      const ih = img.naturalHeight || img.height;
-      if (iw > 0 && ih > 0) {
-        const scale = Math.max(stageW / iw, stageH / ih);
-        const dw = iw * scale;
-        const dh = ih * scale;
-        const dx = (stageW - dw) / 2;
-        const dy = (stageH - dh) / 2;
-        ctx.globalAlpha = 0.55;
-        ctx.drawImage(img, dx, dy, dw, dh);
-        ctx.globalAlpha = 1;
-      }
-    }
-
-    ctx.fillStyle = "#ffffff";
-    for (const s of stars) {
-      ctx.globalAlpha = s.a;
-      ctx.fillRect(s.x * stageW, s.y * stageH, 1, 1);
-    }
-    ctx.globalAlpha = 1;
   }
 
   function drawBossBar(boss) {
@@ -579,11 +565,11 @@
     ctx.fillText(`BOSS HP ${boss.hp}/${boss.hpMax}  PHASE:${boss.phase}${shield}`, x + 6, y + 11);
   }
 
+  // ---------------- Smooth motion ----------------
   let latestSnap = null;
   let renderState = null;
   const EMA_ALPHA = 0.18;
 
-  // ★追加：レンダ状態リセット用
   let lastSeenWave = null;
   let lastSeenTick = null;
   let lastSeenSentAt = null;
@@ -598,7 +584,6 @@
 
   function lerp(a,b,t){ return a + (b-a)*t; }
 
-  // ★修正：消えたIDは残さない（残像/二重表示防止）
   function smoothListByIdSafe(key, alpha) {
     const nextArr = (latestSnap && Array.isArray(latestSnap[key])) ? latestSnap[key] : [];
     const allHaveId = nextArr.every(o => o && typeof o.id === "string");
@@ -657,13 +642,6 @@
     smoothListByIdSafe("enemyBullets", alpha);
   }
 
-  function clearFull() {
-    ctx.save();
-    ctx.setTransform(1, 0, 0, 1, 0, 0);
-    ctx.clearRect(0, 0, ui.canvas.width, ui.canvas.height);
-    ctx.restore();
-  }
-
   function drawState(g, myUid) {
     clearFull();
     ui.hud.style.display = "";
@@ -671,11 +649,10 @@
 
     const my = (g.players || []).find(p => p.uid === myUid);
     if (my) {
-      const colorLabel = my.color === "red" ? "RED" : "BLUE";
-      ui.hudLine1.textContent = `YOU: ${colorLabel} | SCORE: ${my.score} | WAVE: ${g.wave}`;
+      ui.hudLine1.textContent = `YOU: BLUE | SCORE: ${my.score} | WAVE: ${g.wave}`;
       ui.hudLine2.textContent = `連射ON（Space押しっぱなしOK）`;
       ui.hudLine3.textContent = `A/D移動 Space連射 | 生存: ${my.alive ? "YES" : "NO"}`;
-      ui.youTag.textContent = `YOU:${colorLabel}`;
+      ui.youTag.textContent = `YOU:BLUE`;
     } else {
       ui.hudLine1.textContent = `WAVE: ${g.wave} elapsed:${g.elapsed ?? "?"}`;
       ui.hudLine2.textContent = "";
@@ -715,7 +692,7 @@
 
     for (const p of (g.players || [])) {
       const s = toScreen(p.x, p.y);
-      const col = p.color === "red" ? "#ff3b3b" : "#2b78ff";
+      const col = "#2b78ff";
       ctx.fillStyle = col;
       ctx.fillRect(s.x - SIZE.playerW/2, s.y - SIZE.playerH/2, SIZE.playerW, SIZE.playerH);
       if (p.uid === myUid) {
@@ -758,11 +735,22 @@
     ui.hud.style.display = "none";
   }
 
+  // ---------------- Wave banner controller ----------------
+  let waveBannerShownFor = null;
+  function showWaveBanner(wave) {
+    waveBannerShownFor = wave;
+    ui.waveBannerTitle.textContent = `WAVE ${wave}/4`;
+    ui.waveBannerSub.textContent = `5秒後に開始`;
+    ui.waveBanner.style.display = "flex";
+  }
+  function hideWaveBanner() {
+    ui.waveBanner.style.display = "none";
+  }
+
   function startRenderLoop() {
     function frame() {
       if (latestSnap && state.userId) {
         try {
-          // ★追加：wave開始/ゲーム再生成時に描画状態を強制リセット（重なり・チカチカ防止）
           const w = latestSnap.wave ?? null;
           const t = latestSnap.tick ?? null;
           const s = latestSnap.sentAt ?? null;
@@ -780,6 +768,14 @@
             lastSeenWave = w;
             lastSeenTick = t;
             lastSeenSentAt = s;
+          }
+
+          // ★Waveバナー：カウントダウン中は表示（ゲームはhost側で止めている）
+          if (latestSnap?.waveDelayLeft > 0) {
+            showWaveBanner(latestSnap.wave);
+            ui.waveBannerSub.textContent = `${Math.ceil(latestSnap.waveDelayLeft)}秒後に開始`;
+          } else {
+            if (ui.waveBanner.style.display !== "none") hideWaveBanner();
           }
 
           drawState(renderState || latestSnap, state.userId);
@@ -829,6 +825,7 @@
     };
   }
 
+  // ---------------- Game simulation (host) ----------------
   const WAVE_DUR = [30, 40, 90, 140];
   const SCORE = { A: 60, B: 120, C: 200, D: 0, E: 300, BOSS_HIT: 10, BOSS_KILL: 5000 };
   const ENEMY = {
@@ -853,10 +850,10 @@
   const randChoice=(rng,arr)=>arr[Math.floor(rng()*arr.length)];
   const bossPhase = (b)=> b.hp>30?1:b.hp>20?2:b.hp>10?3:4;
 
+  const WAVE_START_DELAY = 5.0; // ★追加：wave切替後 5秒待って開始
+
   function createHostSim(room) {
     const p1Uid = room.p1Uid;
-    const p2Uid = room.p2Uid;
-
     const rng = mulberry32((Date.now() ^ 0x9e3779b9) >>> 0);
 
     const st = {
@@ -864,6 +861,8 @@
       mode: room.mode,
       elapsed: 0,
       wave: 1,
+
+      waveDelayLeft: WAVE_START_DELAY, // ★追加：開始待ち
 
       formation: { dir: 1, xOffset: 0, yOffset: 0, speedBase: 0.10, stepDown: 0.03 },
 
@@ -885,7 +884,6 @@
       rng
     };
 
-    // ★追加：画面外を完全削除（配列肥大化→チカチカ/重なり悪化防止）
     const DESPAWN_PAD = 0.18;
     function isOutNorm(x, y, pad = DESPAWN_PAD) {
       return (x < -pad || x > 1 + pad || y < -pad || y > 1 + pad);
@@ -898,8 +896,7 @@
     }
 
     const mkPlayer = (playerUid, color, x) => ({ uid: playerUid, color, x, y: 0.9, alive: true, score: 0, fireAcc: 0 });
-    st.players[p1Uid] = mkPlayer(p1Uid, "blue", 0.45);
-    if (p2Uid) st.players[p2Uid] = mkPlayer(p2Uid, "red", 0.55);
+    st.players[p1Uid] = mkPlayer(p1Uid, "blue", 0.5);
 
     let lastInputs = {};
     const applyInputs = (inputs) => { lastInputs = inputs || {}; };
@@ -941,7 +938,7 @@
       if (w===3) spawnFormation(["B","C"]);
       if (w===4) spawnBoss();
 
-      // wave開始直後のゴミが残らないように念のため
+      st.waveDelayLeft = WAVE_START_DELAY; // ★追加：wave切替のたびに5秒待つ
       cleanupOutOfBounds();
     }
     spawnWave(1);
@@ -1118,6 +1115,7 @@
       const p = randChoice(st.rng, patterns);
       p(enrage);
     }
+
     function pRing(enrage) {
       const boss=st.boss;
       const phase=bossPhase(boss);
@@ -1271,6 +1269,14 @@
 
     function step(dt) {
       st.tick++;
+
+      // ★Wave待機中：カウントだけ減らす（ゲーム進行は止める）
+      if (st.waveDelayLeft > 0) {
+        st.waveDelayLeft = Math.max(0, st.waveDelayLeft - dt);
+        // 入力でプレイヤー位置だけ動かすかは好み。ここでは止める（完全停止）
+        return;
+      }
+
       st.elapsed += dt;
 
       const t = st.elapsed;
@@ -1282,7 +1288,7 @@
       else if (t < tW3) newWave=3;
       else newWave=4;
 
-      if (newWave !== st.wave) { st.wave = newWave; spawnWave(newWave); }
+      if (newWave !== st.wave) { st.wave = newWave; spawnWave(newWave); return; }
 
       for (const puid in st.players) {
         const p=st.players[puid];
@@ -1334,8 +1340,6 @@
 
       movePlayerBullets(dt);
       st.playerBullets = st.playerBullets.filter(b=>!b.dead);
-
-      // ★追加：最後に必ず掃除
       cleanupOutOfBounds();
     }
 
@@ -1353,6 +1357,7 @@
         tick: st.tick,
         mode: st.mode,
         wave: st.wave,
+        waveDelayLeft: st.waveDelayLeft, // ★追加：クライアントに表示用
         elapsed: Math.floor(st.elapsed*1000)/1000,
         players: playersArr,
         enemies: st.enemies.filter(e=>e.alive).map(e=>({ id:e.id, x:e.x,y:e.y,type:e.type })),
@@ -1386,7 +1391,7 @@
     return Object.keys(v).length;
   }
 
-  function isPlayer(room) { return room?.p1Uid === state.userId || room?.p2Uid === state.userId; }
+  function isPlayer(room) { return room?.p1Uid === state.userId; }
 
   async function deleteRoom(roomId) {
     await remove(ref(db, PATHS.room(roomId)));
@@ -1409,6 +1414,7 @@
     lastSeenWave = null;
     lastSeenTick = null;
     lastSeenSentAt = null;
+    hideWaveBanner();
 
     if (goLobby) setScreen("lobby");
   }
@@ -1440,13 +1446,12 @@
     const now = Date.now();
     const room = {
       roomId,
-      state: (mode === "multi") ? "recruiting" : "preparing",
-      mode,
+      state: "preparing",
+      mode: "solo",
       hostUid: state.userId,
       hostName: state.userName,
       p1Uid: state.userId,
       p2Uid: null,
-      recruiting: mode === "multi" ? { joinerUid: null } : null,
       ready: { [state.userId]: false },
       createdAt: now,
       updatedAt: now,
@@ -1454,7 +1459,7 @@
     };
 
     await set(ref(db, PATHS.room(roomId)), room);
-    await set(ref(db, PATHS.roomIndex(roomId)), { roomId, state: room.state, mode, hostName: state.userName, createdAt: now, startedAt: 0 });
+    await set(ref(db, PATHS.roomIndex(roomId)), { roomId, state: room.state, mode: room.mode, hostName: state.userName, createdAt: now, startedAt: 0 });
 
     await enterRoom(roomId);
   }
@@ -1462,12 +1467,10 @@
   function stateDotClass(st) {
     if (st === "playing") return "playing";
     if (st === "preparing") return "preparing";
-    if (st === "recruiting") return "recruiting";
     if (st === "finished") return "finished";
     return "";
   }
   function roomStateLabel(st) {
-    if (st === "recruiting") return "募集中";
     if (st === "preparing") return "準備中";
     if (st === "playing") return "プレイ中";
     if (st === "finished") return "終了";
@@ -1486,6 +1489,9 @@
       }
 
       for (const r of entries) {
+        // ソロ以外は表示しない（旧データが残ってても無視）
+        if (r.mode && r.mode !== "solo") continue;
+
         const div = document.createElement("div");
         div.className = "roomRow";
 
@@ -1495,7 +1501,7 @@
         top.innerHTML = `
           <span class="pill"><span class="dot ${stateDotClass(r.state)}"></span>${roomStateLabel(r.state || "idle")}</span>
           <span class="tag">#${r.roomId.slice(-6)}</span>
-          <span class="tag">${r.mode || "-"}</span>
+          <span class="tag">solo</span>
           <span class="muted">host: ${escapeHtml(r.hostName || "?")}</span>
         `;
         const meta = document.createElement("div");
@@ -1512,14 +1518,7 @@
         joinBtn.className = "secondary small";
         joinBtn.textContent = "入室";
         joinBtn.onclick = async () => { await enterRoom(r.roomId); };
-
-        const watchBtn = document.createElement("button");
-        watchBtn.className = "ghost small";
-        watchBtn.textContent = "観戦";
-        watchBtn.onclick = async () => { await enterRoom(r.roomId); };
-
         btns.appendChild(joinBtn);
-        btns.appendChild(watchBtn);
 
         if (adminMode) {
           const adminKill = document.createElement("button");
@@ -1546,7 +1545,9 @@
     });
   }
 
+  // ★2)対処：ホスト二重起動防止（起動ロック）
   const activeHostLoops = new Map(); // roomId -> timer
+  const hostStartLocks = new Map();  // roomId -> boolean
 
   function subscribeRoom(roomId) {
     const roomRef = ref(db, PATHS.room(roomId));
@@ -1575,34 +1576,9 @@
       ui.retireBtn.style.display = (host && room.state === "playing") ? "" : "none";
       ui.readyBtn.style.display = (player && room.state === "preparing") ? "" : "none";
 
-      if (room.state === "recruiting" && room.mode === "multi") {
-        if (!player && !room.recruiting?.joinerUid && !room.p2Uid) {
-          const ok = await modalAsk("この部屋のマルチに参加しますか？", "最初にOKした1人だけ参加できます");
-          if (ok) {
-            const joinerRef = ref(db, PATHS.roomRecruitJoiner(roomId));
-            const tx = await runTransaction(joinerRef, (cur) => (cur ? undefined : state.userId));
-            if (!tx.committed) {
-              showAnn("間に合いませんでした", "他の人が先に参加しました");
-              setTimeout(hideAnn, 1200);
-              return;
-            }
-            const nowRoom = (await get(roomRef)).val();
-            if (!nowRoom || nowRoom.state !== "recruiting") return;
-            await update(roomRef, {
-              state: "preparing",
-              p2Uid: state.userId,
-              ready: { ...(nowRoom.ready||{}), [state.userId]: false },
-              updatedAt: Date.now(),
-            });
-            await update(ref(db, PATHS.roomIndex(roomId)), { state: "preparing" });
-          }
-        }
-      }
-
       const hostOn = await isOnline(room.hostUid);
       const p1On = await isOnline(room.p1Uid);
-      const p2On = room.p2Uid ? await isOnline(room.p2Uid) : false;
-      if (!(hostOn || p1On || p2On)) await deleteRoom(roomId);
+      if (!(hostOn || p1On)) await deleteRoom(roomId);
 
       if (room.state === "playing" && room.startedAt) {
         if ((Date.now() - room.startedAt) >= ROOM_MAX_PLAY_MS) {
@@ -1633,10 +1609,10 @@
         lastSeenWave = null;
         lastSeenTick = null;
         lastSeenSentAt = null;
+        hideWaveBanner();
         return;
       }
 
-      // ★追加：新スナップが来た時点で「初回」は即リセット（残像防止）
       if (!renderState) hardResetRenderStateFromLatest();
     });
   }
@@ -1644,8 +1620,8 @@
   async function startHostLoopIfNeeded(roomId, room) {
     const isHost = room.hostUid === state.userId;
     const isPlaying = room.state === "playing";
-    const existing = activeHostLoops.get(roomId);
 
+    const existing = activeHostLoops.get(roomId);
     if (existing) {
       if (!isHost || !isPlaying) {
         clearInterval(existing);
@@ -1653,51 +1629,50 @@
       }
       return;
     }
+
+    if (hostStartLocks.get(roomId)) return;
     if (!isHost || !isPlaying) return;
 
-    const sim = createHostSim(room);
-    await set(ref(db, PATHS.roomGame(roomId)), sim.snapshot());
-
-    const hz = 15;
-    const intervalMs = Math.floor(1000 / hz);
-
-    const timer = setInterval(async () => {
-      const roomNow = (await get(ref(db, PATHS.room(roomId)))).val();
-      if (!roomNow) { clearInterval(timer); activeHostLoops.delete(roomId); return; }
-      if (roomNow.state !== "playing") return;
-
-      if (roomNow.startedAt && (Date.now() - roomNow.startedAt) >= ROOM_MAX_PLAY_MS) {
-        await update(ref(db, PATHS.room(roomId)), { state: "finished", finishedReason: "time_limit_7min", updatedAt: Date.now() });
-        await update(ref(db, PATHS.roomIndex(roomId)), { state: "finished" });
-        return;
-      }
-
-      const inputs = (await get(ref(db, PATHS.roomInputsRoot(roomId)))).val() || {};
-      const now = Date.now();
-      const uids = [roomNow.p1Uid, roomNow.p2Uid].filter(Boolean);
-      const lastTimes = uids.map(u => inputs?.[u]?.t ?? 0);
-      const allIdle = uids.length > 0 && lastTimes.every(t => (now - t) >= 60000);
-      if (allIdle) {
-        await update(ref(db, PATHS.room(roomId)), { state: "finished", finishedReason: "idle_timeout", updatedAt: Date.now() });
-        await update(ref(db, PATHS.roomIndex(roomId)), { state: "finished" });
-        return;
-      }
-
-      sim.applyInputs(inputs);
-      sim.step(intervalMs / 1000);
-
-      if (sim.isAllDead()) {
-        await update(ref(db, PATHS.room(roomId)), { state: "finished", finishedReason: "all_dead", updatedAt: Date.now() });
-        await update(ref(db, PATHS.roomIndex(roomId)), { state: "finished" });
-        return;
-      }
-
+    hostStartLocks.set(roomId, true);
+    try {
+      const sim = createHostSim(room);
       await set(ref(db, PATHS.roomGame(roomId)), sim.snapshot());
-    }, intervalMs);
 
-    activeHostLoops.set(roomId, timer);
+      const hz = 15;
+      const intervalMs = Math.floor(1000 / hz);
+
+      const timer = setInterval(async () => {
+        const roomNow = (await get(ref(db, PATHS.room(roomId)))).val();
+        if (!roomNow) { clearInterval(timer); activeHostLoops.delete(roomId); return; }
+        if (roomNow.state !== "playing") return;
+
+        if (roomNow.startedAt && (Date.now() - roomNow.startedAt) >= ROOM_MAX_PLAY_MS) {
+          await update(ref(db, PATHS.room(roomId)), { state: "finished", finishedReason: "time_limit_7min", updatedAt: Date.now() });
+          await update(ref(db, PATHS.roomIndex(roomId)), { state: "finished" });
+          return;
+        }
+
+        const inputs = (await get(ref(db, PATHS.roomInputsRoot(roomId)))).val() || {};
+
+        sim.applyInputs(inputs);
+        sim.step(intervalMs / 1000);
+
+        if (sim.isAllDead()) {
+          await update(ref(db, PATHS.room(roomId)), { state: "finished", finishedReason: "all_dead", updatedAt: Date.now() });
+          await update(ref(db, PATHS.roomIndex(roomId)), { state: "finished" });
+          return;
+        }
+
+        await set(ref(db, PATHS.roomGame(roomId)), sim.snapshot());
+      }, intervalMs);
+
+      activeHostLoops.set(roomId, timer);
+    } finally {
+      hostStartLocks.delete(roomId);
+    }
   }
 
+  // ---------------- Boot ----------------
   await signInAnonymously(auth);
 
   onAuthStateChanged(auth, async (user) => {
@@ -1732,7 +1707,7 @@
     ui.changeNameBtn.onclick = () => { setScreen("name"); ui.nameHint.textContent = "名前を変更して決定してください"; };
 
     ui.createSoloBtn.onclick = async () => { if (!state.userName) return alert("名前を先に決定してください"); await createRoom("solo"); };
-    ui.createMultiBtn.onclick = async () => { if (!state.userName) return alert("名前を先に決定してください"); await createRoom("multi"); };
+    ui.createMultiBtn.onclick = async () => { /* マルチ削除 */ };
 
     ui.leaveRoomBtn.onclick = async () => { await leaveRoom(true); };
 
@@ -1747,9 +1722,8 @@
 
       const ready = room.ready || {};
       const ok1 = !!ready?.[room.p1Uid];
-      const ok2 = (room.mode === "solo") ? true : !!ready?.[room.p2Uid];
 
-      if (ok1 && ok2) {
+      if (ok1) {
         const now = Date.now();
         await update(roomRef, { state: "playing", startedAt: now, updatedAt: now });
         await update(ref(db, PATHS.roomIndex(state.roomId)), { state: "playing", startedAt: now });

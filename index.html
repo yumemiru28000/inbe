@@ -705,8 +705,8 @@ function stopBGM() {
     const my = (g.players || []).find(p => p.uid === myUid);
     if (my) {
       ui.hudLine1.textContent = `YOU: BLUE | SCORE: ${my.score} | WAVE: ${g.wave}`;
-      ui.hudLine2.textContent = `連射ON（Space押しっぱなしOK）`;
-      ui.hudLine3.textContent = `A/D移動 Space連射 | 生存: ${my.alive ? "YES" : "NO"}`;
+      ui.hudLine2.textContent = `連射Space`;
+      ui.hudLine3.textContent = `A/D　 Space | 生存: ${my.alive ? "YES" : "NO"}`;
       ui.youTag.textContent = `YOU:BLUE`;
     } else {
       ui.hudLine1.textContent = `WAVE: ${g.wave} elapsed:${g.elapsed ?? "?"}`;
@@ -881,7 +881,7 @@ function stopBGM() {
   }
 
   // ---------------- Game simulation (host) ----------------
-  const WAVE_DUR = [2, 2, 3, 100];
+  const WAVE_DUR = [2, 2, 15, 100];
   const SCORE = { A: 60, B: 120, C: 200, D: 0, E: 300, BOSS_HIT: 10, BOSS_KILL: 5000 };
   const ENEMY = {
     A: { firePerSec: 0.36, bulletSpeed: 0.28, moveSpeed: 0.06 },
@@ -891,10 +891,10 @@ function stopBGM() {
     D: { fallSpeed: 0.20 }
   };
 const BOSS = {
-  hpMax: 50,
+  hpMax: 100,
   x: 0.5,
   y: 0.16,
-  baseBulletSpeed: 0.99,
+  baseBulletSpeed: 0.66,
   shieldEvery: 9.0,
   shieldDuration: 10.0,       // ← ここを10.0に！
   moveSpeed: 0.18

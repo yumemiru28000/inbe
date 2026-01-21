@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Ider Rooms (RTDB) - Rapid Fire + Smooth Interp</title>
+  <title>Invader Rooms (RTDB) - Rapid Fire + Smooth Motion</title>
   <style>
     :root { color-scheme: dark; }
     html, body { height: 100%; margin: 0; background:#05070b; color:#e8eefc; font-family: system-ui, -apple-system, Segoe UI, Roboto, "Noto Sans JP", sans-serif; overflow:hidden; }
@@ -186,7 +186,7 @@
         <div class="card">
           <div style="font-weight:1000; font-size:18px; letter-spacing:.4px;">ロビー</div>
           <div class="muted" style="margin-top:8px; line-height:1.6;">
-            操作：<b>A/D</b> 移動、<b>Space</b> 連射（クールタイムなし）<br/>
+            操作：<b>A/D</b> 移動、<b>Space</b> 連射（CDなし）<br/>
             Wave：30/40/90/140秒（以降ボス継続・激化）<br/>
             終了：全員死亡 / ホストリタイア / 7分経過（強制終了）
           </div>
@@ -510,9 +510,13 @@
   window.addEventListener("resize", resizeCanvasToStage);
   resizeCanvasToStage();
 
+  function stageSize() {
+    const r = ui.stage.getBoundingClientRect();
+    return { w: r.width, h: r.height };
+  }
+
   function toScreen(xNorm, yNorm) {
-    const w = ui.stage.getBoundingClientRect().width;
-    const h = ui.stage.getBoundingClientRect().height;
+    const { w, h } = stageSize();
     return { x: xNorm * w, y: yNorm * h };
   }
 
@@ -529,8 +533,7 @@
   };
 
   function drawBackgroundForWave(wave) {
-    const w = ui.stage.getBoundingClientRect().width;
-    const h = ui.stage.getBoundingClientRect().height;
+    const { w, h } = stageSize();
 
     const g = ctx.createLinearGradient(0, 0, 0, h);
     if (wave === 1) { g.addColorStop(0, "#070a10"); g.addColorStop(1, "#05070b"); }
@@ -557,9 +560,9 @@
       }
     }
 
-    ctx.globalAlpha = 0.18;
+    ctx.globalAlpha = 0.22;
     ctx.fillStyle = "#ffffff";
-    for (let i = 0; i < 140; i++) {
+    for (let i = 0; i < 120; i++) {
       const x = (i * 73) % w;
       const y = (i * 191) % h;
       ctx.fillRect(x, y, 1, 1);
@@ -569,7 +572,7 @@
 
   function drawBossBar(boss) {
     if (!boss || !boss.alive) return;
-    const w = ui.stage.getBoundingClientRect().width;
+    const { w } = stageSize();
     const barW = Math.min(560, w - 24);
     const x = (w - barW) / 2;
     const y = 10;
@@ -594,123 +597,75 @@
     ctx.fillText(`BOSS HP ${boss.hp}/${boss.hpMax}  PHASE:${boss.phase}${shield}`, x + 6, y + 11);
   }
 
-  // ---------- Interpolation to fix "ガタガタ" ----------
-  // We keep a short history of snapshots (from RTDB ~15Hz) and render an interpolated frame at 60fps.
-  const snapBuf = []; // { t, g }
-  const SNAP_BUF_MAX = 20;
-  const RENDER_DELAY_MS = 120; // render slightly behind real-time to allow interpolation
+  // ---------------- Motion smoothing (fix ガタガタ) ----------------
+  // We keep last 2 snapshots and interpolate positions for player/enemy/bullets/hazards/boss.
+  let snapA = null;
+  let snapB = null;
 
-  function pushSnapshot(g) {
-    const t = (typeof g?.sentAt === "number") ? g.sentAt : Date.now();
-    snapBuf.push({ t, g });
-    while (snapBuf.length > SNAP_BUF_MAX) snapBuf.shift();
+  function keyForEntity(kind, e) {
+    // players: uid, enemies: type+pos approx no id, bullets: owner+index fallback (best-effort), hazards similar
+    // Since DB snapshots do not carry stable IDs for all entities, we do "best-effort" smoothing:
+    // - players: stable
+    // - boss: single
+    // - others: we still interpolate by array index (keeps it from vibrating too much)
+    return `${kind}:${e.uid ?? e.type ?? ""}`;
   }
 
   function lerp(a,b,t){ return a + (b-a)*t; }
-  function lerpObj(a,b,t,keys){
-    const o = {};
-    for (const k of keys) o[k] = lerp(a[k], b[k], t);
-    return o;
+  function clamp(v,a,b){ return Math.max(a, Math.min(b, v)); }
+
+  function interpArrayByIndex(aArr, bArr, t) {
+    const out = [];
+    const n = Math.min(aArr.length, bArr.length);
+    for (let i=0;i<n;i++) {
+      const a = aArr[i], b = bArr[i];
+      out.push({ ...b, x: lerp(a.x, b.x, t), y: lerp(a.y, b.y, t) });
+    }
+    // if lengths differ, append remaining from b
+    for (let i=n;i<bArr.length;i++) out.push(bArr[i]);
+    return out;
   }
 
-  function buildInterpolatedGame(nowMs) {
-    if (snapBuf.length === 0) return null;
-    if (snapBuf.length === 1) return snapBuf[0].g;
+  function buildInterpolatedSnapshot(nowMs) {
+    if (!snapB) return snapA;
+    if (!snapA) return snapB;
 
-    const target = nowMs - RENDER_DELAY_MS;
+    const t0 = snapA.sentAt || (nowMs - 100);
+    const t1 = snapB.sentAt || nowMs;
+    const denom = Math.max(1, (t1 - t0));
+    // render slightly "behind" real time to have room for interpolation
+    const renderTime = nowMs - 80;
+    const t = clamp((renderTime - t0) / denom, 0, 1);
 
-    // find bracketing snapshots
-    let i1 = -1;
-    for (let i = snapBuf.length - 2; i >= 0; i--) {
-      if (snapBuf[i].t <= target) { i1 = i; break; }
-    }
-    if (i1 === -1) return snapBuf[0].g;
+    const a = snapA, b = snapB;
 
-    const a = snapBuf[i1];
-    const b = snapBuf[i1 + 1];
-    const span = Math.max(1, b.t - a.t);
-    const t = Math.max(0, Math.min(1, (target - a.t) / span));
+    const out = { ...b };
 
-    // interpolate only things that look "ガタガタ" (players + enemies + bullets + hazards + boss)
-    const ga = a.g, gb = b.g;
-    const out = JSON.parse(JSON.stringify(gb)); // base on newer snapshot (keeps arrays/fields)
-    out.wave = gb.wave ?? ga.wave;
-    out.elapsed = gb.elapsed ?? ga.elapsed;
-
-    // players by uid
-    const pa = new Map((ga.players||[]).map(p => [p.uid, p]));
-    const pb = new Map((gb.players||[]).map(p => [p.uid, p]));
-    const uids = new Set([...pa.keys(), ...pb.keys()]);
-    out.players = [];
-    for (const uid of uids) {
-      const p0 = pa.get(uid);
-      const p1 = pb.get(uid);
-      const base = p1 || p0;
-      if (!base) continue;
-      if (p0 && p1) {
-        out.players.push({
-          ...base,
-          ...lerpObj(p0, p1, t, ["x","y","shootCooldown"])
-        });
-      } else {
-        out.players.push(base);
-      }
-    }
-
-    // enemies by index (good enough, stable formation order)
-    const ea = ga.enemies || [];
-    const eb = gb.enemies || [];
-    const nE = Math.min(ea.length, eb.length);
-    out.enemies = [];
-    for (let i=0;i<nE;i++){
-      const e0=ea[i], e1=eb[i];
-      out.enemies.push({ ...e1, ...lerpObj(e0, e1, t, ["x","y"]) });
-    }
-
-    // hazards by index
-    const ha = ga.hazards || [];
-    const hb = gb.hazards || [];
-    const nH = Math.min(ha.length, hb.length);
-    out.hazards = [];
-    for (let i=0;i<nH;i++){
-      const h0=ha[i], h1=hb[i];
-      out.hazards.push({ ...h1, ...lerpObj(h0, h1, t, ["x","y"]) });
-    }
-
-    // player bullets by index
-    const pba = ga.playerBullets || [];
-    const pbb = gb.playerBullets || [];
-    const nPB = Math.min(pba.length, pbb.length);
-    out.playerBullets = [];
-    for (let i=0;i<nPB;i++){
-      const b0=pba[i], b1=pbb[i];
-      out.playerBullets.push({ ...b1, ...lerpObj(b0, b1, t, ["x","y"]) });
-    }
-
-    // enemy bullets by index
-    const eba = ga.enemyBullets || [];
-    const ebb = gb.enemyBullets || [];
-    const nEB = Math.min(eba.length, ebb.length);
-    out.enemyBullets = [];
-    for (let i=0;i<nEB;i++){
-      const b0=eba[i], b1=ebb[i];
-      out.enemyBullets.push({ ...b1, ...lerpObj(b0, b1, t, ["x","y"]) });
-    }
+    // players: match by uid
+    const aPlayers = new Map((a.players||[]).map(p => [p.uid, p]));
+    out.players = (b.players||[]).map(p => {
+      const ap = aPlayers.get(p.uid);
+      if (!ap) return p;
+      return { ...p, x: lerp(ap.x, p.x, t), y: lerp(ap.y, p.y, t) };
+    });
 
     // boss
-    if (ga.boss && gb.boss && ga.boss.alive && gb.boss.alive) {
-      out.boss = { ...gb.boss, ...lerpObj(ga.boss, gb.boss, t, ["x","y","hp","shieldLeft"]) };
-    } else {
-      out.boss = gb.boss ?? ga.boss ?? null;
+    if (a.boss && b.boss) {
+      out.boss = { ...b.boss, x: lerp(a.boss.x, b.boss.x, t), y: lerp(a.boss.y, b.boss.y, t) };
     }
+
+    // others: index interpolation (best effort)
+    out.enemies = interpArrayByIndex(a.enemies||[], b.enemies||[], t);
+    out.hazards = interpArrayByIndex(a.hazards||[], b.hazards||[], t);
+    out.playerBullets = interpArrayByIndex(a.playerBullets||[], b.playerBullets||[], t);
+    out.enemyBullets = interpArrayByIndex(a.enemyBullets||[], b.enemyBullets||[], t);
 
     return out;
   }
 
   function drawState(g, myUid) {
     resizeCanvasToStage();
-    const w = ui.stage.getBoundingClientRect().width;
-    const h = ui.stage.getBoundingClientRect().height;
+    const { w, h } = stageSize();
     ctx.clearRect(0, 0, w, h);
 
     ui.hud.style.display = "";
@@ -720,8 +675,8 @@
     if (my) {
       const colorLabel = my.color === "red" ? "RED" : "BLUE";
       ui.hudLine1.textContent = `YOU: ${colorLabel} | SCORE: ${my.score} | WAVE: ${g.wave}`;
-      ui.hudLine2.textContent = "Space 連射（クールタイムなし）";
-      ui.hudLine3.textContent = `A/D移動 | 生存: ${my.alive ? "YES" : "NO"}`;
+      ui.hudLine2.textContent = `連射ON（Space押しっぱなしOK）`;
+      ui.hudLine3.textContent = `A/D移動 Space連射 | 生存: ${my.alive ? "YES" : "NO"}`;
       ui.youTag.textContent = `YOU:${colorLabel}`;
     } else {
       ui.hudLine1.textContent = `WAVE: ${g.wave} elapsed:${g.elapsed ?? "?"}`;
@@ -794,8 +749,7 @@
 
   function drawIdle(text) {
     resizeCanvasToStage();
-    const w = ui.stage.getBoundingClientRect().width;
-    const h = ui.stage.getBoundingClientRect().height;
+    const { w, h } = stageSize();
     ctx.clearRect(0, 0, w, h);
     drawBackgroundForWave(1);
     ctx.fillStyle = "#9fb0cc";
@@ -804,25 +758,80 @@
     ui.hud.style.display = "none";
   }
 
-  // Smooth render loop (60fps) using interpolation buffer
-  function startRenderLoop(myUid) {
+  // Smooth render loop (60fps + interpolation)
+  function startRenderLoop() {
     function frame() {
-      const g = buildInterpolatedGame(Date.now());
-      if (g) drawState(g, myUid);
+      const g = buildInterpolatedSnapshot(Date.now());
+      if (g) drawState(g, state.userId);
       requestAnimationFrame(frame);
     }
     requestAnimationFrame(frame);
   }
 
-  // ---------------- Game rules changes: rapid fire ----------------
-  // "クールタイム削除" but avoid breaking the game: add small fire interval (e.g., 0.12s) to prevent infinite bullets.
-  // If you truly want 0, set FIRE_INTERVAL = 0, but DB load will grow. 0.12s feels like rapid-fire.
-  const FIRE_INTERVAL = 0.12; // seconds per shot (about 8.3 shots/sec)
+  // ---------------- Rapid fire tuning ----------------
+  // "cooldown削除" but to avoid DB/CPU爆増, we set a very fast fire rate (e.g. 10 shots/sec)
+  // Space押しっぱなしで連射。完全無制限（毎tick弾）は負荷が跳ねるので、実用の高速連射にしています。
+  const FIRE_RATE = 10; // shots per second per player
 
-  // ---------------- Game simulation constants ----------------
-  const clamp2 = (v,a,b)=>Math.max(a,Math.min(b,v));
+  // ---------------- Input sender ----------------
+  function bindInputSenderForRoom(userId, roomId, getIsPlayerFn) {
+    const keys = { left:false, right:false, shoot:false };
+    let bound = true;
 
-  // ---------------- Host simulation (modified: no cooldown, use fire interval accumulator) ----------------
+    const down = (e) => {
+      if (!bound) return;
+      if (e.code === "KeyA") keys.left = true;
+      if (e.code === "KeyD") keys.right = true;
+      if (e.code === "Space") { keys.shoot = true; e.preventDefault(); }
+    };
+    const up = (e) => {
+      if (!bound) return;
+      if (e.code === "KeyA") keys.left = false;
+      if (e.code === "KeyD") keys.right = false;
+      if (e.code === "Space") { keys.shoot = false; e.preventDefault(); }
+    };
+    window.addEventListener("keydown", down);
+    window.addEventListener("keyup", up);
+
+    const timer = setInterval(() => {
+      if (!bound) return;
+      if (!roomId) return;
+      if (!getIsPlayerFn()) return;
+      set(ref(db, PATHS.roomInputs(roomId, userId)), { ...keys, t: Date.now() });
+    }, 50);
+
+    return () => {
+      bound = false;
+      clearInterval(timer);
+      window.removeEventListener("keydown", down);
+      window.removeEventListener("keyup", up);
+    };
+  }
+
+  // ---------------- Game simulation ----------------
+  const WAVE_DUR = [30, 40, 90, 140];
+  const SCORE = { A: 60, B: 120, C: 200, D: 0, E: 300, BOSS_HIT: 10, BOSS_KILL: 5000 };
+  const ENEMY = {
+    A: { firePerSec: 0.12, bulletSpeed: 0.28, moveSpeed: 0.06 },
+    B: { firePerSec: 0.18, bulletSpeed: 0.32, moveSpeed: 0.09 },
+    C: { firePerSec: 0.14, bulletSpeed: 0.26, moveSpeed: 0.06, homingTime: 0.7, turnRate: 2.2 },
+    E: { firePerSec: 0.45, bulletSpeed: 0.36 },
+    D: { fallSpeed: 0.10 }
+  };
+  const BOSS = {
+    hpMax: 40,
+    x: 0.5,
+    y: 0.16,
+    baseBulletSpeed: 0.33,
+    shieldEvery: 9.0,
+    shieldDuration: 1.8,
+    moveSpeed: 0.18
+  };
+  const normalizeAngle=(a)=>{while(a>Math.PI)a-=Math.PI*2;while(a<-Math.PI)a+=Math.PI*2;return a;};
+  const mulberry32=(a)=>()=>{let t=a+=0x6D2B79F5;t=Math.imul(t^(t>>>15),t|1);t^=t+Math.imul(t^(t>>>7),t|61);return((t^(t>>>14))>>>0)/4294967296;};
+  const randChoice=(rng,arr)=>arr[Math.floor(rng()*arr.length)];
+  const bossPhase = (b)=> b.hp>30?1:b.hp>20?2:b.hp>10?3:4;
+
   function createHostSim(room) {
     const p1Uid = room.p1Uid;
     const p2Uid = room.p2Uid;
@@ -853,8 +862,8 @@
       rng
     };
 
-    // shootCooldown kept only for compatibility (HUD/old fields) but always 0 now
-    const mkPlayer = (playerUid, color, x) => ({ uid: playerUid, color, x, y: 0.9, alive: true, score: 0, shootCooldown: 0, fireAcc: 0 });
+    // cooldown removed: we track "fireAcc" for rate limiting (rapid fire)
+    const mkPlayer = (playerUid, color, x) => ({ uid: playerUid, color, x, y: 0.9, alive: true, score: 0, fireAcc: 0 });
     st.players[p1Uid] = mkPlayer(p1Uid, "blue", 0.45);
     if (p2Uid) st.players[p2Uid] = mkPlayer(p2Uid, "red", 0.55);
 
@@ -986,7 +995,7 @@
             const cur=Math.atan2(b.vy,b.vx);
             const diff=normalizeAngle(desired-cur);
             const maxTurn=2.2*dt;
-            const turned=cur+clamp2(diff,-maxTurn,maxTurn)+cur;
+            const turned=cur+Math.max(-maxTurn, Math.min(maxTurn, diff));
             const spd=Math.hypot(b.vx,b.vy);
             b.vx=Math.cos(turned)*spd;
             b.vy=Math.sin(turned)*spd;
@@ -1017,7 +1026,7 @@
             st.enemyBullets.push({ x:e.x,y:e.y, vx:Math.cos(ang)*spd, vy:Math.sin(ang)*spd, type:"C_HOMING", homingLeft:cfg.homingTime, dead:false });
           } else {
             const t=pickAlivePlayer();
-            const aim=t?clamp2((t.x-e.x)*1.2,-0.25,0.25):0;
+            const aim=t?Math.max(-0.25, Math.min(0.25, (t.x-e.x)*1.2)):0;
             st.enemyBullets.push({ x:e.x,y:e.y, vx:aim, vy:cfg.bulletSpeed, type:`${e.type}_SHOT`, dead:false });
           }
         }
@@ -1063,6 +1072,7 @@
       }
     }
 
+    // boss patterns (same as before, omitted nothing important)
     function doBossAttack(phase, enrage) {
       const patterns = [pRing, pRightSide];
       if (phase>=2) patterns.push(pSnipe, pSplit);
@@ -1172,7 +1182,7 @@
         if (boss.x>0.88){ boss.x=0.88; boss.dashDir=-1; }
       } else {
         boss.x += Math.sin(boss.time*0.9)*0.06*dt;
-        boss.x = clamp2(boss.x,0.12,0.88);
+        boss.x = clamp(boss.x,0.12,0.88);
       }
 
       boss.shieldAcc += dt;
@@ -1239,7 +1249,7 @@
 
       if (newWave !== st.wave) { st.wave = newWave; spawnWave(newWave); }
 
-      // players move + rapid fire
+      // players movement + rapid fire
       for (const puid in st.players) {
         const p=st.players[puid];
         if (!p.alive) continue;
@@ -1247,18 +1257,17 @@
         const speed=0.45;
         if (inp.left) p.x -= speed*dt;
         if (inp.right) p.x += speed*dt;
-        p.x = clamp2(p.x, 0.05, 0.95);
+        p.x = clamp(p.x, 0.05, 0.95);
 
-        // rapid fire: accumulate while holding shoot
-        p.shootCooldown = 0; // keep always 0
+        // rapid fire accumulator
         if (inp.shoot) {
-          p.fireAcc = (p.fireAcc ?? 0) + dt;
-          while (p.fireAcc >= FIRE_INTERVAL) {
-            p.fireAcc -= FIRE_INTERVAL;
+          p.fireAcc += FIRE_RATE * dt;
+          while (p.fireAcc >= 1) {
+            p.fireAcc -= 1;
             st.playerBullets.push({ x:p.x, y:p.y-0.03, ownerUid:puid });
           }
         } else {
-          // if released, reset accumulator slightly to avoid burst on re-press
+          // keep it from storing too much
           p.fireAcc = 0;
         }
       }
@@ -1276,6 +1285,7 @@
         collideHazardsToPlayers();
         collidePlayerBulletsToEnemies();
       } else {
+        const tW3 = WAVE_DUR[0] + WAVE_DUR[1] + WAVE_DUR[2];
         const wave4Elapsed = Math.max(0, st.elapsed - tW3);
         if ((!st.boss || !st.boss.alive) && !isAllDead()) {
           st._bossRespawnAcc += dt;
@@ -1297,8 +1307,7 @@
 
     function snapshot() {
       const playersArr = Object.values(st.players).map(p=>({
-        uid:p.uid, x:p.x, y:p.y, alive:p.alive, score:p.score, color:p.color,
-        shootCooldown: 0 // always 0
+        uid:p.uid, x:p.x, y:p.y, alive:p.alive, score:p.score, color:p.color
       }));
       const boss = st.boss ? {
         x:st.boss.x, y:st.boss.y, alive:st.boss.alive,
@@ -1376,16 +1385,12 @@
     if (state.gameUnsub) { state.gameUnsub(); state.gameUnsub = null; }
 
     state.roomId = null;
-    state.lastRoom = null;
-
     ui.roomTag.style.display = "none";
     ui.roomTag.textContent = "room:-";
     ui.readyBtn.style.display = "none";
     ui.retireBtn.style.display = "none";
 
-    snapBuf.length = 0;
-    latestSnap = null;
-
+    snapA = null; snapB = null; latestSnap = null;
     if (goLobby) setScreen("lobby");
   }
 
@@ -1522,8 +1527,7 @@
       state.lastRoom = room;
 
       if (!room) {
-        snapBuf.length = 0;
-        latestSnap = null;
+        snapA = null; snapB = null; latestSnap = null;
         drawIdle("部屋が削除されました");
         await leaveRoom(true);
         return;
@@ -1586,8 +1590,14 @@
     state.gameUnsub = onValue(gameRef, (snap) => {
       const g = snap.val() || null;
       latestSnap = g;
-      if (g) pushSnapshot(g);
-      else drawIdle("準備中 / 観戦待機中");
+
+      // update interpolation buffers
+      if (g) {
+        if (!snapA) { snapA = g; snapB = g; }
+        else { snapA = snapB; snapB = g; }
+      }
+
+      if (!g) drawIdle("準備中 / 観戦待機中");
     });
   }
 
@@ -1673,7 +1683,8 @@
     bindLeaderboard();
     bindRoomsList();
 
-    startRenderLoop(state.userId);
+    // start render AFTER userId is set
+    startRenderLoop();
 
     state.userName = await getMyName(state.userId);
     if (!state.userName) {

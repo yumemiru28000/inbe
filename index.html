@@ -1358,6 +1358,27 @@ function step(dt) {
     return; 
   }
 
+  // ------------------- ここから追加：敵をWave中ずっと出し続ける -------------------
+  // createHostSimでst.enemySpawnAcc, st.enemySpawnIntervalを初期化しておくこと！(例: st.enemySpawnInterval=2)
+  if (st.wave <= 3) {
+    st.enemySpawnAcc += dt;
+    while (st.enemySpawnAcc >= st.enemySpawnInterval) {
+      st.enemySpawnAcc -= st.enemySpawnInterval;
+      // --- WaveごとにenemyType変化させたい場合ここで分岐
+      let type = "A";
+      if (st.wave === 2) type = Math.random() < 0.5 ? "A" : "B";
+      if (st.wave === 3) type = Math.random() < 0.5 ? "B" : "C";
+      const x = 0.18 + st.rng() * 0.64;
+      st.enemies.push({
+        id: `en_${st.nextEnemyId++}`,
+        type,
+        baseX: x, baseY: 0.1, x: x, y: 0.1,
+        alive: true, fireAcc: 0
+      });
+    }
+  }
+  // --------------------------------------------------------------------------
+
   for (const puid in st.players) {
     const p=st.players[puid];
     if (!p.alive) continue;

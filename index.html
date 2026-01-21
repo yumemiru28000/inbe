@@ -1362,26 +1362,30 @@ function step(dt) {
   }
 
   // ------------------- ここから追加：敵をWave中ずっと出し続ける -------------------
-// Wave本体進行でfor文の前、毎フレーム敵を大量スポーン
+// --- ここから追加する！ ---
+// Wave1,2,3だけで雑魚出し
 if (st.wave <= 3) {
-  // Waveによって出現間隔や数を変える
-  let interval = st.wave === 1 ? 0.38 : st.wave === 2 ? 0.31 : 0.24; // だんだん早く
-  let batch = st.wave === 1 ? 1 : st.wave === 1 ? 1 : 1; // 1回で何体スポーンか
+  // 雑魚スポーンロジックそのまま
+  let interval = st.wave === 1 ? 0.38 : st.wave === 2 ? 0.31 : 0.24;
+  let batch = st.wave === 1 ? 1 : st.wave === 2 ? 1 : 1; // 好きな数
   st.enemySpawnAcc += dt;
   while (st.enemySpawnAcc >= interval) {
     st.enemySpawnAcc -= interval;
     for (let i = 0; i < batch; ++i) {
-      const x = 0.08 + st.rng() * 0.84;    // 画面のもっと端から幅広く
-      const y = -0.4 - st.rng() * 0.08;   // もっと上から（画面外上部からスポーン）
+      const x = 0.08 + st.rng() * 0.84;
+      const y = -0.2 - st.rng() * 0.08;
       st.enemies.push({
         id: `en_${st.nextEnemyId++}`,
-        type: "A",  // 固定
+        type: "A",
         baseX: x, baseY: y, x: x, y: y,
         alive: true, fireAcc: 0
       });
     }
   }
 }
+
+// --- ボス戦（wave4）専用で雑魚は絶対生成しない ---
+// 既存の if (st.wave>3) { ...updateBoss... } はそのまま
   // --------------------------------------------------------------------------
 
   for (const puid in st.players) {

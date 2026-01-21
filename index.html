@@ -1,15 +1,22 @@
+
 <!doctype html>
 <html lang="ja">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Invader Rooms (RTDB) - Single File Complete (UI: full canvas, bigger sprites, wave backgrounds)</title>
+  <title>Invader Rooms (RTDB) - Single File Complete (scaled, no scroll, smoother)</title>
   <style>
     :root { color-scheme: dark; }
-    html, body { height: 100%; margin: 0; background:#0b0e14; color:#e8eefc; font-family: system-ui, -apple-system, Segoe UI, Roboto, "Noto Sans JP", sans-serif; overflow:hidden; }
+    html, body { height: 100%; margin: 0; background:#000; color:#e8eefc; font-family: system-ui, -apple-system, Segoe UI, Roboto, "Noto Sans JP", sans-serif; overflow:hidden; }
+    * { box-sizing: border-box; }
+
     #app { display:grid; grid-template-rows:auto 1fr; height:100%; }
 
-    header { padding:10px 12px; display:flex; gap:12px; align-items:center; border-bottom:1px solid #1f2a3a; background:#0b0e14; }
+    header {
+      padding:10px 12px; display:flex; gap:12px; align-items:center;
+      border-bottom:1px solid #1f2a3a; background:#0b0e14;
+      position: relative; z-index: 5;
+    }
     header b { font-weight: 900; letter-spacing:.2px; }
     small.mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; color:#a8b3c7; }
     .tag { padding:2px 8px; border-radius: 999px; border:1px solid #1f2a3a; background:#0b1220; color:#a8b3c7; font-size:12px; }
@@ -19,10 +26,10 @@
     button.secondary { background:#223047; }
     button.danger { background:#b42318; }
     button.ghost { background:transparent; border:1px solid #1f2a3a; color:#a8b3c7; }
-    button.small { padding:7px 10px; border-radius:10px; font-weight:800; font-size:12px; }
+    button.small { padding:6px 10px; border-radius:10px; font-weight:700; font-size:12px; }
     button[disabled] { opacity:.45; cursor:not-allowed; }
 
-    input { width: 100%; box-sizing:border-box; padding:12px 12px; border-radius:12px; border:1px solid #26344a; background:#0b1220; color:#e8eefc; font-size:16px; }
+    input { width: 100%; padding:12px 12px; border-radius:12px; border:1px solid #26344a; background:#0b1220; color:#e8eefc; font-size:16px; }
     .muted { color:#a8b3c7; }
     .row { display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
     .col { display:flex; flex-direction:column; gap:10px; }
@@ -32,140 +39,166 @@
     .screen.active { display:block; }
 
     /* name screen */
+    #nameScreen { background: radial-gradient(circle at 50% 20%, rgba(43,105,255,.15), transparent 55%), #05070b; }
     #nameScreen .wrap { height:100%; display:flex; align-items:center; justify-content:center; padding:18px; }
-    #nameScreen .panel { width:min(520px, 92vw); background: rgba(14,20,32,.82); border:1px solid rgba(31,42,58,.75); border-radius:18px; padding:16px; }
+    #nameScreen .panel { width:min(520px, 92vw); border:1px solid rgba(255,255,255,.10); background: rgba(14,20,32,.75); backdrop-filter: blur(6px); border-radius:18px; padding:16px; }
     #nameScreen h1 { margin:0 0 6px 0; font-size: 26px; }
 
-    /* lobby (game-like) */
+    /* lobby (make it feel more "game lobby") */
+    #lobbyScreen {
+      background:
+        radial-gradient(circle at 10% 20%, rgba(255,255,255,.10), transparent 40%),
+        radial-gradient(circle at 70% 30%, rgba(255,255,255,.08), transparent 40%),
+        radial-gradient(circle at 40% 80%, rgba(255,255,255,.06), transparent 40%),
+        linear-gradient(#05070b, #0b0e14);
+    }
     #lobbyMain {
       height:100%;
-      padding:0;
+      padding:14px;
       display:grid;
-      grid-template-columns: 1fr 360px;
-      gap:0;
+      grid-template-columns: 380px 1fr;
+      gap:14px;
       min-height:0;
-      position:relative;
+      overflow:hidden;
     }
-    #lobbyLeft {
-      min-height:0;
-      padding:18px;
-      position:relative;
-    }
-    #lobbyLeft::before{
-      content:"";
-      position:absolute; inset:0;
-      background:
-        radial-gradient(circle at 20% 20%, rgba(255,255,255,.10), transparent 40%),
-        radial-gradient(circle at 80% 30%, rgba(255,255,255,.08), transparent 40%),
-        radial-gradient(circle at 40% 80%, rgba(255,255,255,.06), transparent 45%),
-        linear-gradient(#070a10, #0b0e14);
-      opacity:.85;
-      z-index:0;
-    }
-    #lobbyLeftInner { position:relative; z-index:1; max-width: 920px; }
-    #titleBig { font-weight: 1000; font-size: 30px; letter-spacing:.5px; margin-bottom:10px; }
-    #subBig { color:#a8b3c7; line-height:1.6; margin-bottom:12px; max-width: 820px; }
-    #actionsBar { display:flex; gap:10px; flex-wrap:wrap; margin-top:10px; }
 
-    #roomsArea { margin-top:16px; }
-    #roomsTitle { display:flex; justify-content:space-between; align-items:center; gap:10px; }
-    #roomsTitle h2 { margin:0; font-size:16px; letter-spacing:.5px; }
-    #roomsList {
-      margin-top:10px;
-      display:grid;
-      grid-template-columns: 1fr;
-      gap:10px;
-      max-height: calc(100vh - 260px);
-      overflow:auto;
-      padding-right: 8px;
-    }
-    .roomRow {
-      border:1px solid rgba(31,42,58,.8);
-      border-radius:16px;
-      padding:12px;
-      background: rgba(12,18,30,.70);
+    /* left: big hero panel */
+    .hero {
+      border:1px solid rgba(255,255,255,.10);
+      background: rgba(8,12,20,.65);
       backdrop-filter: blur(6px);
-      display:grid;
-      grid-template-columns: 1fr auto;
-      gap:12px;
+      border-radius: 18px;
+      padding: 16px;
+    }
+    .hero h2 { margin:0 0 8px 0; font-size: 20px; }
+    .hero .desc { line-height: 1.55; }
+    .hero .cta { margin-top: 12px; display:flex; gap:10px; flex-wrap:wrap; }
+    .hero .footerRow { margin-top:14px; display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap; }
+
+    /* right: rooms list full-height, with ranking as overlay (top-right) */
+    #roomsPane {
+      position: relative;
+      min-height:0;
+      overflow:hidden;
+      border:1px solid rgba(255,255,255,.08);
+      background: rgba(8,12,20,.45);
+      border-radius: 18px;
+      padding: 12px;
+      backdrop-filter: blur(6px);
+    }
+
+    #roomsTitleRow { display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap; }
+    #roomsList { margin-top: 10px; overflow:auto; height: calc(100% - 44px); padding-right: 4px; }
+    #roomsList::-webkit-scrollbar { width: 8px; }
+    #roomsList::-webkit-scrollbar-thumb { background: rgba(255,255,255,.12); border-radius: 999px; }
+
+    .roomRow {
+      display:grid; grid-template-columns: 1fr auto; gap:10px;
+      border:1px solid rgba(31,42,58,.7);
+      border-radius:14px;
+      padding:10px 10px;
+      background: rgba(11,18,32,.55);
+      margin-bottom:10px;
     }
     .roomTop { display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
-    .roomMeta { font-size:12px; color:#a8b3c7; margin-top:6px; }
+    .roomMeta { font-size:12px; color:#a8b3c7; margin-top:4px; }
     .roomBtns { display:flex; gap:8px; justify-content:flex-end; align-items:center; flex-wrap:wrap; }
 
-    #lobbyRight {
-      min-height:0;
-      padding:12px;
-      border-left: 1px solid rgba(31,42,58,.75);
-      background: rgba(10,14,22,.65);
+    /* ranking overlay (top-right) */
+    #rankOverlay {
+      position:absolute;
+      top:12px; right:12px;
+      width: min(320px, 45vw);
+      border:1px solid rgba(255,255,255,.10);
+      background: rgba(14,20,32,.38);
+      border-radius: 16px;
+      padding: 12px;
       backdrop-filter: blur(8px);
-      display:flex;
-      flex-direction:column;
-      gap:10px;
+      pointer-events: none; /* allow clicking rooms under it */
     }
-    #lbCard { flex:1; min-height:0; overflow:auto; border:1px solid rgba(31,42,58,.75); border-radius:16px; padding:12px; background: rgba(14,20,32,.45); }
-    #lbCardHeader { display:flex; justify-content:space-between; align-items:center; gap:10px; }
-    #lbCardHeader b { letter-spacing:.4px; }
-    #adminMini { border:1px solid rgba(31,42,58,.75); border-radius:16px; padding:12px; background: rgba(14,20,32,.35); }
-    #adminMini input { padding:8px 10px; font-size:13px; }
-    #adminMini .row { justify-content:space-between; }
+    #rankOverlay h3 { margin:0; font-size: 12px; letter-spacing:.6px; text-transform: uppercase; color:#a8b3c7; }
+    #leaderboard { margin-top: 8px; font-size: 13px; color:#dbe6ff; }
 
-    /* game screen: FULL CANVAS (no scroll) */
-    #gameScreen, #gameWrap { height:100%; }
-    #gameWrap { display:flex; flex-direction:column; min-height:0; }
+    /* admin mini */
+    #adminMini {
+      display:flex; gap:8px; align-items:center;
+      margin-top: 12px;
+    }
+    #adminMini input { width: 120px; padding:8px 10px; font-size:13px; border-radius: 12px; }
+
+    /* game */
+    #gameScreen { background:#000; }
+    #gameWrap { height:100%; display:flex; flex-direction:column; }
     #gameTopBar {
-      padding:10px 12px;
-      border-bottom:1px solid #1f2a3a;
-      display:flex;
-      align-items:center;
-      gap:10px;
+      padding:10px 12px; border-bottom:1px solid #1f2a3a;
+      display:flex; align-items:center; gap:10px;
       background:#0b0e14;
+      position: relative; z-index: 5;
     }
     #gameTopBar .spacer { flex:1; }
-    #canvasWrap { flex:1; min-height:0; position:relative; }
-    canvas { width:100%; height:100%; display:block; background:#05070b; }
+
+    /* Stage frame: enforce 16:9 with black bars, no scroll */
+    #stageFrame {
+      flex:1; min-height:0;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      background:#000; /* bars */
+      position: relative;
+    }
+
+    #stage {
+      width: 100%;
+      height: 100%;
+      max-width: calc((100vh - 60px) * (16/9)); /* header+topbar approx */
+      max-height: calc(100vh - 60px);
+      aspect-ratio: 16 / 9;
+      position: relative;
+      background: #05070b;
+      overflow:hidden;
+    }
+
+    /* Wave background (optional images) */
+    #bgLayer {
+      position:absolute; inset:0;
+      background-size: cover;
+      background-position: center;
+      background-repeat: no-repeat;
+      opacity: .35;
+      filter: saturate(1.1) contrast(1.05);
+      pointer-events:none;
+    }
+    #shadeLayer {
+      position:absolute; inset:0;
+      background: radial-gradient(circle at 50% 20%, rgba(43,105,255,.10), transparent 55%),
+                  linear-gradient(rgba(0,0,0,.35), rgba(0,0,0,.55));
+      pointer-events:none;
+    }
+
+    #canvasWrap {
+      position:absolute; inset:0;
+    }
+    canvas { width:100%; height:100%; display:block; background: transparent; }
 
     #hud {
-      position:absolute; left:12px; top:12px;
+      position:absolute; left:10px; top:10px;
       background: rgba(10,14,22,.72);
-      border:1px solid rgba(31,42,58,.9);
+      border:1px solid rgba(255,255,255,.12);
       padding:10px 12px;
       border-radius:16px;
       font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
       color:#e8eefc;
       min-width: 320px;
-      max-width: min(520px, 92vw);
+      backdrop-filter: blur(6px);
     }
 
-    #ann { position:absolute; inset:0; display:none; align-items:center; justify-content:center; background: rgba(0,0,0,.60); }
-    #ann .panel { width:min(560px, 92vw); border:1px solid rgba(31,42,58,.9); border-radius:18px; padding:16px; background: rgba(14,20,32,.85); }
+    #ann { position:absolute; inset:0; display:none; align-items:center; justify-content:center; background: rgba(0,0,0,.60); z-index: 10; }
+    #ann .panel { width:min(560px, 92vw); border:1px solid rgba(255,255,255,.12); background: rgba(14,20,32,.80); border-radius: 18px; padding: 16px; }
 
     /* modal */
     #modal { position:fixed; inset:0; display:none; align-items:center; justify-content:center; background: rgba(0,0,0,.60); z-index: 50; }
-    #modal .panel { width:min(560px, 92vw); border:1px solid rgba(31,42,58,.9); border-radius:18px; padding:16px; background: rgba(14,20,32,.88); }
+    #modal .panel { width:min(560px, 92vw); border:1px solid rgba(255,255,255,.12); background: rgba(14,20,32,.86); border-radius: 18px; padding: 16px; }
     #modal .row { justify-content:flex-end; }
-
-    /* Wave background (optional images) */
-    #waveBg {
-      position:absolute; inset:0;
-      background:
-        radial-gradient(circle at 20% 20%, rgba(255,255,255,.06), transparent 45%),
-        linear-gradient(#03050a, #05070b);
-      background-size: cover;
-      background-position: center;
-      opacity: .38;
-      pointer-events:none;
-      z-index: 0;
-      transition: opacity .25s ease, filter .25s ease;
-      filter: saturate(1.05) contrast(1.05);
-    }
-    #waveBg.dim { opacity: .22; }
-    #canvasFg { position:relative; z-index:1; }
-
-    /* improve list scrollbars */
-    #roomsList::-webkit-scrollbar { width: 10px; }
-    #roomsList::-webkit-scrollbar-thumb { background: rgba(168,179,199,.25); border-radius: 999px; }
-    #roomsList::-webkit-scrollbar-track { background: rgba(0,0,0,.0); }
   </style>
 </head>
 <body>
@@ -196,67 +229,51 @@
   <!-- Lobby screen -->
   <section id="lobbyScreen" class="screen">
     <div id="lobbyMain">
-      <div id="lobbyLeft">
-        <div id="lobbyLeftInner">
-          <div id="titleBig">LOBBY</div>
-          <div id="subBig">
-            操作：<b>A/D</b> 移動、<b>Space</b> 発射（CD 3秒）<br/>
-            Wave：30/40/90/140秒（以降ボス継続・激化）<br/>
-            終了：全員死亡 / ホストリタイア / 7分経過（強制終了）
-          </div>
+      <div class="hero">
+        <h2>ロビー</h2>
+        <div class="desc muted">
+          操作：<b>A/D</b> 移動、<b>Space</b> 発射（CD 3秒）<br/>
+          Wave：30/40/90/140秒（以降ボス継続・激化）<br/>
+          終了：全員死亡 / ホストリタイア / 7分経過（強制終了）
+        </div>
 
-          <div class="row" style="justify-content:space-between; align-items:flex-end; gap:12px;">
-            <div class="col" style="gap:6px;">
-              <div class="muted">あなたの名前</div>
-              <div style="font-weight:900; font-size:18px;" id="myNameLabel"></div>
-              <button id="changeNameBtn" class="ghost" style="width:max-content;">名前を変更</button>
-            </div>
-            <div class="col" style="gap:10px; align-items:flex-end;">
-              <div class="muted">プレイ</div>
-              <div id="actionsBar">
-                <button id="createSoloBtn">ソロ部屋を作る</button>
-                <button id="createMultiBtn">マルチ部屋を作る</button>
-              </div>
-              <div class="muted" id="createHint"></div>
-            </div>
-          </div>
+        <div class="cta">
+          <button id="createSoloBtn">ソロ部屋を作る</button>
+          <button id="createMultiBtn">マルチ部屋を作る</button>
+        </div>
 
-          <div id="roomsArea">
-            <div id="roomsTitle">
-              <h2>部屋一覧（最大5部屋）</h2>
-              <span class="tag">参加 / 観戦</span>
-            </div>
-            <div class="muted" style="margin-top:6px;">
-              誰かがプレイ中でも、別部屋ならあなたもプレイできます。
-            </div>
-            <div id="roomsList"></div>
-          </div>
+        <div class="muted" id="createHint" style="margin-top:10px;"></div>
+
+        <div id="adminMini">
+          <input id="adminPw" placeholder="運営 1122" inputmode="numeric" maxlength="8" />
+          <button id="adminEnterBtn" class="secondary small">決定</button>
+          <button id="adminExitBtn" class="ghost small" style="display:none;">解除</button>
+        </div>
+
+        <div class="footerRow">
+          <button id="changeNameBtn" class="ghost">名前を変更</button>
+          <span class="muted" id="myNameLabel"></span>
         </div>
       </div>
 
-      <div id="lobbyRight">
-        <div id="lbCard">
-          <div id="lbCardHeader">
-            <b>ランキング（上位）</b>
-            <span class="tag">Realtime</span>
-          </div>
-          <div id="leaderboard" style="margin-top:10px;"></div>
+      <div id="roomsPane">
+        <div id="roomsTitleRow">
+          <div style="font-weight:900; font-size:18px;">部屋一覧</div>
+          <span class="tag">最大5部屋</span>
+        </div>
+        <div class="muted" style="margin-top:6px;">
+          各部屋の行にある <b>入室</b> / <b>観戦</b> から入れます。<br/>
+          プレイ中の部屋でも観戦OK。別部屋なら同時にプレイできます。
         </div>
 
-        <div id="adminMini">
-          <div class="row" style="justify-content:space-between;">
-            <b class="muted">運営</b>
-            <span class="tag">pw 1122</span>
+        <div id="roomsList"></div>
+
+        <div id="rankOverlay">
+          <div style="display:flex; justify-content:space-between; align-items:center;">
+            <h3>ランキング（上位）</h3>
+            <span class="tag">Realtime</span>
           </div>
-          <div class="row" style="margin-top:10px;">
-            <input id="adminPw" placeholder="1122" inputmode="numeric" maxlength="8" style="width:120px;" />
-            <button id="adminEnterBtn" class="secondary small">決定</button>
-            <button id="adminExitBtn" class="ghost small" style="display:none;">解除</button>
-          </div>
-          <div class="muted" style="margin-top:8px; font-size:12px; line-height:1.4;">
-            運営はこの端末だけ（ローカル）で有効。<br/>
-            有効化すると部屋一覧に運営ボタンが出ます。
-          </div>
+          <div id="leaderboard"></div>
         </div>
       </div>
     </div>
@@ -276,27 +293,29 @@
         <button id="leaveRoomBtn" class="secondary">部屋を出る</button>
       </div>
 
-      <div id="canvasWrap">
-        <!-- optional wave background -->
-        <div id="waveBg" class="dim"></div>
-        <canvas id="game" aria-label="game canvas"></canvas>
+      <div id="stageFrame">
+        <div id="stage">
+          <div id="bgLayer"></div>
+          <div id="shadeLayer"></div>
+          <div id="canvasWrap">
+            <canvas id="game"></canvas>
 
-        <div id="hud" style="display:none;">
-          <div id="hudLine1"></div>
-          <div id="hudLine2" style="margin-top:4px;"></div>
-          <div id="hudLine3" class="muted" style="margin-top:6px;"></div>
-          <div class="muted" style="margin-top:8px; font-size:12px;">
-            画面は自動で全体表示（スクロール不要） / 表示が小さければブラウザのズームを 100% にしてください
-          </div>
-        </div>
+            <div id="hud" style="display:none;">
+              <div id="hudLine1"></div>
+              <div id="hudLine2" style="margin-top:4px;"></div>
+              <div id="hudLine3" class="muted" style="margin-top:6px;"></div>
+            </div>
 
-        <div id="ann">
-          <div class="panel">
-            <div style="font-weight:900; margin-bottom:6px;" id="annTitle"></div>
-            <div class="muted" id="annBody"></div>
+            <div id="ann">
+              <div class="panel">
+                <div style="font-weight:900; margin-bottom:6px;" id="annTitle"></div>
+                <div class="muted" id="annBody"></div>
+              </div>
+            </div>
           </div>
         </div>
       </div>
+
     </div>
   </section>
 </div>
@@ -373,7 +392,9 @@
     retireBtn: $("#retireBtn"),
     leaveRoomBtn: $("#leaveRoomBtn"),
 
-    waveBg: $("#waveBg"),
+    stage: $("#stage"),
+    bgLayer: $("#bgLayer"),
+
     canvas: $("#game"),
     hud: $("#hud"),
     hudLine1: $("#hudLine1"),
@@ -396,9 +417,6 @@
     ui.lobbyScreen.classList.toggle("active", name === "lobby");
     ui.gameScreen.classList.toggle("active", name === "game");
   }
-
-  function uuidShort() { return Math.random().toString(16).slice(2, 10); }
-  const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 
   function showAnn(title, body) {
     ui.annTitle.textContent = title;
@@ -435,8 +453,6 @@
     localStorage.setItem("inv_admin", v ? "1" : "0");
     ui.adminTag.style.display = v ? "" : "none";
     ui.adminExitBtn.style.display = v ? "" : "none";
-    // re-render rooms list buttons (by forcing a small refresh)
-    // (rooms list is driven by onValue; easiest is to do nothing here)
   }
   setAdminMode(adminMode);
 
@@ -444,7 +460,7 @@
     if (ui.adminPw.value.trim() === "1122") {
       setAdminMode(true);
       ui.adminPw.value = "";
-    } else alert("���スワードが違います");
+    } else alert("パスワードが違います");
   };
   ui.adminExitBtn.onclick = () => setAdminMode(false);
 
@@ -507,137 +523,80 @@
     });
   }
 
-  // ---------------- Wave background (optional images) ----------------
-  // Put files next to index.html:
-  //   w1.png, w2.png, w3.png, w4.png
-  // They are optional; if missing, it still works (falls back to gradient).
-  const waveBgCache = new Map(); // wave -> HTMLImageElement
+  // ---------------- Stage background per wave (optional image files) ----------------
+  // Put files next to index.html: w1.png, w2.png, w3.png, w4.png
+  // If missing, it still works (background remains gradient).
   function setWaveBackground(wave) {
-    if (!ui.waveBg) return;
-
     const url = `w${wave}.png`;
-    // If already loaded successfully, apply immediately
-    if (waveBgCache.has(wave) && waveBgCache.get(wave).dataset.ok === "1") {
-      ui.waveBg.style.backgroundImage = `url("${url}")`;
-      ui.waveBg.classList.remove("dim");
-      return;
-    }
-
-    // Try loading (once). If fail, keep gradient.
-    if (waveBgCache.has(wave) && waveBgCache.get(wave).dataset.ok === "0") {
-      ui.waveBg.style.backgroundImage = "";
-      ui.waveBg.classList.add("dim");
-      return;
-    }
-
+    // Try to load to avoid broken-image feel
     const img = new Image();
-    waveBgCache.set(wave, img);
-    img.onload = () => {
-      img.dataset.ok = "1";
-      ui.waveBg.style.backgroundImage = `url("${url}")`;
-      ui.waveBg.classList.remove("dim");
-    };
-    img.onerror = () => {
-      img.dataset.ok = "0";
-      ui.waveBg.style.backgroundImage = "";
-      ui.waveBg.classList.add("dim");
-    };
+    img.onload = () => { ui.bgLayer.style.backgroundImage = `url(${url})`; };
+    img.onerror = () => { ui.bgLayer.style.backgroundImage = "none"; };
     img.src = url;
   }
 
-  // ---------------- Game draw (FULL SCREEN + larger sprites) ----------------
-  const ctx = ui.canvas.getContext("2d", { alpha: false });
-
+  // ---------------- Canvas draw (scaled 1.5x, smoother) ----------------
+  const ctx = ui.canvas.getContext("2d");
+  const DRAW_SCALE = 1.5; // ★ requested
   function resizeCanvas() {
     const dpr = window.devicePixelRatio || 1;
-    const rect = ui.canvas.getBoundingClientRect();
+    const rect = ui.stage.getBoundingClientRect(); // ★ fit to stage (16:9 area)
     ui.canvas.width = Math.max(1, Math.floor(rect.width * dpr));
     ui.canvas.height = Math.max(1, Math.floor(rect.height * dpr));
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   }
   window.addEventListener("resize", resizeCanvas);
-  resizeCanvas();
 
   function toScreen(xNorm, yNorm) {
-    const w = ui.canvas.getBoundingClientRect().width;
-    const h = ui.canvas.getBoundingClientRect().height;
+    const w = ui.stage.getBoundingClientRect().width;
+    const h = ui.stage.getBoundingClientRect().height;
     return { x: xNorm * w, y: yNorm * h, w, h };
-  }
-
-  // Size tuning (bigger + consistent across resolutions)
-  function sizeForCanvas() {
-    const w = ui.canvas.getBoundingClientRect().width;
-    const h = ui.canvas.getBoundingClientRect().height;
-    // Base size grows with min dimension
-    const base = Math.max(10, Math.min(w, h) * 0.030); // ~3% of min dimension
-    return {
-      playerW: base * 1.8,
-      playerH: base * 1.0,
-      enemyS: base * 1.3,
-      bossW: base * 3.8,
-      bossH: base * 2.2,
-      pBulletW: Math.max(4, base * 0.30),
-      pBulletH: Math.max(14, base * 1.4),
-      eBulletS: Math.max(6, base * 0.55),
-      hazardR: Math.max(10, base * 1.3),
-    };
   }
 
   function drawIdle(text) {
     resizeCanvas();
     ctx.clearRect(0, 0, ui.canvas.width, ui.canvas.height);
-    ctx.fillStyle = "#0b0e14";
-    ctx.fillRect(0, 0, ui.canvas.getBoundingClientRect().width, ui.canvas.getBoundingClientRect().height);
-
+    const { w } = toScreen(0,0);
     ctx.fillStyle = "#9fb0cc";
     ctx.font = "16px system-ui";
     ctx.fillText(text, 16, 28);
+    ctx.fillText("プレイ中ならここに表示されます", 16, 52);
     ui.hud.style.display = "none";
   }
 
   function drawBossBar(boss) {
     if (!boss || !boss.alive) return;
-    const w = ui.canvas.getBoundingClientRect().width;
-    const barW = Math.min(620, w - 24);
+    const { w } = toScreen(0,0);
+    const barW = Math.min(560, w - 24);
     const x = (w - barW) / 2;
     const y = 12;
-    const h = 16;
+    const h = 14;
 
     const ratio = boss.hpMax > 0 ? Math.max(0, boss.hp / boss.hpMax) : 0;
 
     ctx.fillStyle = "rgba(10,14,22,.72)";
     ctx.fillRect(x - 6, y - 6, barW + 12, h + 12);
-    ctx.strokeStyle = "rgba(31,42,58,.95)";
+    ctx.strokeStyle = "rgba(255,255,255,.10)";
     ctx.strokeRect(x - 6, y - 6, barW + 12, h + 12);
 
     ctx.fillStyle = "#3a0b0b";
     ctx.fillRect(x, y, barW, h);
-
     ctx.fillStyle = boss.shieldLeft > 0 ? "#7bdff2" : "#ff3b3b";
     ctx.fillRect(x, y, barW * ratio, h);
 
     ctx.fillStyle = "#e8eefc";
     ctx.font = "12px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace";
     const shield = boss.shieldLeft > 0 ? ` SHIELD:${boss.shieldLeft.toFixed(1)}s` : "";
-    ctx.fillText(`BOSS HP ${boss.hp}/${boss.hpMax}  PHASE:${boss.phase}${shield}`, x + 8, y + 12);
+    ctx.fillText(`BOSS HP ${boss.hp}/${boss.hpMax}  PHASE:${boss.phase}${shield}`, x + 6, y + 11);
   }
 
   function drawState(g, myUid) {
     resizeCanvas();
-
-    const rect = ui.canvas.getBoundingClientRect();
-    const W = rect.width, H = rect.height;
-
-    // background base
-    ctx.fillStyle = "#05070b";
-    ctx.fillRect(0, 0, W, H);
-
+    ctx.clearRect(0, 0, ui.canvas.width, ui.canvas.height);
     ui.hud.style.display = "";
 
-    // update wave background (optional image)
-    setWaveBackground(g.wave || 1);
-
-    const sz = sizeForCanvas();
+    // ★ background per wave
+    if (g.wave) setWaveBackground(g.wave);
 
     const my = (g.players || []).find(p => p.uid === myUid);
     if (my) {
@@ -650,79 +609,76 @@
       ui.youTag.textContent = `YOU:${colorLabel}`;
     } else {
       ui.hudLine1.textContent = `WAVE: ${g.wave} elapsed:${g.elapsed ?? "?"}`;
-      ui.hudLine2.textContent = "観戦中";
+      ui.hudLine2.textContent = "";
       ui.hudLine3.textContent = "";
       ui.youTag.textContent = `YOU:WATCH`;
     }
 
     drawBossBar(g.boss);
 
+    // sizes (★ 1.5x)
+    const ENEMY_SIZE = 16 * DRAW_SCALE;
+    const PLAYER_W = 24 * DRAW_SCALE;
+    const PLAYER_H = 14 * DRAW_SCALE;
+    const PB_W = 4 * DRAW_SCALE;
+    const PB_H = 16 * DRAW_SCALE;
+    const EB_S = 6 * DRAW_SCALE;
+    const HAZ_R = 10 * DRAW_SCALE;
+    const BOSS_W = 52 * DRAW_SCALE;
+    const BOSS_H = 28 * DRAW_SCALE;
+
     // enemies
     for (const e of (g.enemies || [])) {
       const s = toScreen(e.x, e.y);
-      const size = sz.enemyS;
       ctx.fillStyle =
         e.type === "A" ? "#ffd166" :
         e.type === "B" ? "#ff9f1c" :
         e.type === "C" ? "#7bdff2" :
         e.type === "E" ? "#b8f2a6" : "#ffd166";
-      ctx.fillRect(s.x - size/2, s.y - size/2, size, size);
-      // outline
-      ctx.strokeStyle = "rgba(0,0,0,.35)";
-      ctx.strokeRect(s.x - size/2, s.y - size/2, size, size);
+      ctx.fillRect(s.x - ENEMY_SIZE/2, s.y - ENEMY_SIZE/2, ENEMY_SIZE, ENEMY_SIZE);
     }
 
-    // hazards D (bigger)
+    // hazards
     for (const h of (g.hazards || [])) {
       const s = toScreen(h.x, h.y);
       ctx.fillStyle = "#ff4d6d";
       ctx.beginPath();
-      ctx.arc(s.x, s.y, sz.hazardR, 0, Math.PI * 2);
+      ctx.arc(s.x, s.y, HAZ_R, 0, Math.PI * 2);
       ctx.fill();
-      ctx.strokeStyle = "rgba(0,0,0,.35)";
-      ctx.stroke();
     }
 
-    // boss
+    // boss body
     if (g.boss && g.boss.alive) {
       const s = toScreen(g.boss.x, g.boss.y);
       ctx.fillStyle = g.boss.shieldLeft > 0 ? "#7bdff2" : "#ff3b3b";
-      ctx.fillRect(s.x - sz.bossW/2, s.y - sz.bossH/2, sz.bossW, sz.bossH);
+      ctx.fillRect(s.x - BOSS_W/2, s.y - BOSS_H/2, BOSS_W, BOSS_H);
       ctx.strokeStyle = "#ffffff";
       ctx.lineWidth = 2;
-      ctx.strokeRect(s.x - sz.bossW/2, s.y - sz.bossH/2, sz.bossW, sz.bossH);
-      ctx.lineWidth = 1;
+      ctx.strokeRect(s.x - BOSS_W/2, s.y - BOSS_H/2, BOSS_W, BOSS_H);
     }
 
-    // players (bigger)
+    // players
     for (const p of (g.players || [])) {
       const s = toScreen(p.x, p.y);
       const col = p.color === "red" ? "#ff3b3b" : "#2b78ff";
       ctx.fillStyle = col;
-      ctx.fillRect(s.x - sz.playerW/2, s.y - sz.playerH/2, sz.playerW, sz.playerH);
-
-      // make dead visible (dim)
-      if (!p.alive) {
-        ctx.fillStyle = "rgba(0,0,0,.55)";
-        ctx.fillRect(s.x - sz.playerW/2, s.y - sz.playerH/2, sz.playerW, sz.playerH);
-      }
+      ctx.fillRect(s.x - PLAYER_W/2, s.y - PLAYER_H/2, PLAYER_W, PLAYER_H);
 
       if (p.uid === myUid) {
         ctx.strokeStyle = "#ffffff";
         ctx.lineWidth = 2;
-        ctx.strokeRect(s.x - sz.playerW/2 - 3, s.y - sz.playerH/2 - 3, sz.playerW + 6, sz.playerH + 6);
-        ctx.lineWidth = 1;
+        ctx.strokeRect(s.x - (PLAYER_W/2 + 3), s.y - (PLAYER_H/2 + 3), PLAYER_W + 6, PLAYER_H + 6);
       }
     }
 
-    // player bullets (bigger)
+    // player bullets
     ctx.fillStyle = "#e8eefc";
     for (const b of (g.playerBullets || [])) {
       const s = toScreen(b.x, b.y);
-      ctx.fillRect(s.x - sz.pBulletW/2, s.y - sz.pBulletH/2, sz.pBulletW, sz.pBulletH);
+      ctx.fillRect(s.x - PB_W/2, s.y - PB_H/2, PB_W, PB_H);
     }
 
-    // enemy bullets (bigger + more visible)
+    // enemy bullets
     for (const b of (g.enemyBullets || [])) {
       const s = toScreen(b.x, b.y);
       const col =
@@ -732,15 +688,98 @@
         (b.type || "").includes("SPLIT") ? "#ffd6ff" :
         "#ffccff";
       ctx.fillStyle = col;
-      ctx.beginPath();
-      ctx.arc(s.x, s.y, sz.eBulletS, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.strokeStyle = "rgba(0,0,0,.35)";
-      ctx.stroke();
+      ctx.fillRect(s.x - EB_S/2, s.y - EB_S/2, EB_S, EB_S);
     }
   }
 
-  // ---------------- Input sender (per room) ----------------
+  // ---------------- Smoother host loop (less choppy) ----------------
+  // - simulate at 60Hz locally
+  // - send snapshot at 20Hz to DB (reduce jitter / bandwidth)
+  const SIM_HZ = 60;
+  const NET_HZ = 20;
+
+  // ---------------- Utility ----------------
+  const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+  function uuidShort() { return Math.random().toString(16).slice(2, 10); }
+
+  // ---------------- Admin mode ----------------
+  let adminMode = (localStorage.getItem("inv_admin") === "1");
+  function setAdminMode(v) {
+    adminMode = v;
+    localStorage.setItem("inv_admin", v ? "1" : "0");
+    ui.adminTag.style.display = v ? "" : "none";
+    ui.adminExitBtn.style.display = v ? "" : "none";
+  }
+  setAdminMode(adminMode);
+
+  ui.adminEnterBtn.onclick = () => {
+    if (ui.adminPw.value.trim() === "1122") {
+      setAdminMode(true);
+      ui.adminPw.value = "";
+    } else alert("パスワードが違います");
+  };
+  ui.adminExitBtn.onclick = () => setAdminMode(false);
+
+  // ---------------- Paths ----------------
+  const PATHS = {
+    presence: (uid) => `presence/${uid}`,
+    names: (uid) => `lobby/names/${uid}`,
+    leaderboardTop: `leaderboard/top`,
+
+    roomsIndex: `rooms_index`,
+    room: (roomId) => `rooms/${roomId}`,
+    roomIndex: (roomId) => `rooms_index/${roomId}`,
+
+    roomGame: (roomId) => `rooms/${roomId}/game`,
+    roomInputsRoot: (roomId) => `rooms/${roomId}/inputs`,
+    roomInputs: (roomId, uid) => `rooms/${roomId}/inputs/${uid}`,
+    roomReady: (roomId, uid) => `rooms/${roomId}/ready/${uid}`,
+    roomRecruitJoiner: (roomId) => `rooms/${roomId}/recruiting/joinerUid`,
+  };
+
+  // ---------------- Presence ----------------
+  async function bindPresence(userId) {
+    const presRef = ref(db, PATHS.presence(userId));
+    await set(presRef, { online: true, lastSeen: serverTimestamp() });
+    onDisconnect(presRef).set({ online: false, lastSeen: serverTimestamp() });
+  }
+  async function isOnline(userId) {
+    if (!userId) return false;
+    const snap = await get(ref(db, PATHS.presence(userId)));
+    return !!snap.val()?.online;
+  }
+
+  // ---------------- Name ----------------
+  async function getMyName(userId) {
+    const snap = await get(ref(db, PATHS.names(userId)));
+    const v = snap.val();
+    return (typeof v === "string" && v.trim()) ? v.trim() : "";
+  }
+  async function setMyName(userId, name) {
+    await set(ref(db, PATHS.names(userId)), name);
+  }
+
+  // ---------------- Leaderboard ----------------
+  function bindLeaderboard() {
+    onValue(ref(db, PATHS.leaderboardTop), (snap) => {
+      const data = snap.val() || [];
+      ui.leaderboard.innerHTML = "";
+      if (!Array.isArray(data) || data.length === 0) {
+        ui.leaderboard.textContent = "まだ記録がありません";
+        return;
+      }
+      const ol = document.createElement("ol");
+      ol.style.margin = "0 0 0 18px";
+      for (const row of data) {
+        const li = document.createElement("li");
+        li.textContent = `${row.name ?? "?"} - ${row.score ?? 0}`;
+        ol.appendChild(li);
+      }
+      ui.leaderboard.appendChild(ol);
+    });
+  }
+
+  // ---------------- Input sender ----------------
   function bindInputSenderForRoom(userId, roomId, getIsPlayerFn) {
     const keys = { left:false, right:false, shoot:false };
     let bound = true;
@@ -775,7 +814,7 @@
     };
   }
 
-  // ---------------- Game simulation (UNCHANGED) ----------------
+  // ---------------- Game simulation (same logic as previous working build) ----------------
   const WAVE_DUR = [30, 40, 90, 140];
   const SHOOT_CD = 3.0;
   const SCORE = { A: 60, B: 120, C: 200, D: 0, E: 300, BOSS_HIT: 10, BOSS_KILL: 5000 };
@@ -1001,22 +1040,16 @@
       }
     }
 
-    function collidePlayerBulletsToEnemies() {
-      for (const b of st.playerBullets) {
+    function collideEnemyBulletsToPlayers() {
+      for (const b of st.enemyBullets) {
         if (b.dead) continue;
-        for (const e of st.enemies) {
-          if (!e.alive) continue;
-          const dx=e.x-b.x, dy=e.y-b.y;
-          if (dx*dx+dy*dy<0.00085) {
-            e.alive=false; b.dead=true;
-            const p=st.players[b.ownerUid]; if (p) p.score += (SCORE[e.type]??0);
-            break;
-          }
+        for (const puid in st.players) {
+          const p=st.players[puid]; if(!p.alive) continue;
+          const dx=p.x-b.x, dy=p.y-b.y;
+          if (dx*dx+dy*dy<0.0010) { p.alive=false; b.dead=true; break; }
         }
       }
-      st.enemies = st.enemies.filter(e=>e.alive);
     }
-
     function collideHazardsToPlayers() {
       for (const h of st.hazards) {
         if (!h.alive) continue;
@@ -1028,26 +1061,24 @@
       }
       st.hazards = st.hazards.filter(h=>h.alive);
     }
-
-    function collideEnemyBulletsToPlayers() {
-      for (const b of st.enemyBullets) {
+    function collidePlayerBulletsToEnemies() {
+      for (const b of st.playerBullets) {
         if (b.dead) continue;
-        for (const puid in st.players) {
-          const p=st.players[puid]; if(!p.alive) continue;
-          const dx=p.x-b.x, dy=p.y-b.y;
-          if (dx*dx+dy*dy<0.0010) { p.alive=false; b.dead=true; break; }
+        for (const e of st.enemies) {
+          if (!e.alive) continue;
+          const dx=e.x-b.x, dy=e.y-b.y;
+          if (dx*dx+dy*dy<0.00085) { e.alive=false; b.dead=true; const p=st.players[b.ownerUid]; if(p) p.score += SCORE[e.type]||0; break; }
         }
       }
+      st.enemies = st.enemies.filter(e=>e.alive);
     }
 
-    // boss patterns
     function doBossAttack(phase, enrage) {
       const patterns = [pRing, pRightSide];
       if (phase>=2) patterns.push(pSnipe, pSplit);
       if (phase>=3) patterns.push(pWave, pHomingWeak, pFeint);
       if (phase>=4) patterns.push(pDash, pSnake);
-      const p = randChoice(st.rng, patterns);
-      p(enrage);
+      randChoice(st.rng, patterns)(enrage);
     }
     function pRing(enrage) {
       const boss=st.boss;
@@ -1082,30 +1113,24 @@
     function pFeint(enrage) {
       const boss=st.boss;
       const delay=0.55+(st.rng()*0.45);
-      boss.feintQueue.push({
-        t: delay,
-        pattern: () => {
-          const spd=BOSS.baseBulletSpeed*0.95*enrage;
-          const n=8;
-          for (let i=0;i<n;i++){
-            const a=Math.PI*2*(i/n);
-            st.enemyBullets.push({ x:boss.x,y:boss.y, vx:Math.cos(a)*spd, vy:Math.sin(a)*spd, type:"BOSS_FEINT", dead:false });
-          }
+      boss.feintQueue.push({ t: delay, pattern: () => {
+        const spd=BOSS.baseBulletSpeed*0.95*enrage;
+        const n=8;
+        for (let i=0;i<n;i++){
+          const a=Math.PI*2*(i/n);
+          st.enemyBullets.push({ x:boss.x,y:boss.y, vx:Math.cos(a)*spd, vy:Math.sin(a)*spd, type:"BOSS_FEINT", dead:false });
         }
-      });
+      }});
     }
     function pSnipe(enrage) {
       const boss=st.boss;
       const target=pickAlivePlayer(); if(!target) return;
-      boss.feintQueue.push({
-        t: 0.65,
-        pattern: () => {
-          const dx=target.x-boss.x, dy=target.y-boss.y;
-          const a=Math.atan2(dy,dx);
-          const spd=BOSS.baseBulletSpeed*1.9*enrage;
-          st.enemyBullets.push({ x:boss.x,y:boss.y, vx:Math.cos(a)*spd, vy:Math.sin(a)*spd, type:"BOSS_SNIPE", dead:false });
-        }
-      });
+      boss.feintQueue.push({ t: 0.65, pattern: () => {
+        const dx=target.x-boss.x, dy=target.y-boss.y;
+        const a=Math.atan2(dy,dx);
+        const spd=BOSS.baseBulletSpeed*1.9*enrage;
+        st.enemyBullets.push({ x:boss.x,y:boss.y, vx:Math.cos(a)*spd, vy:Math.sin(a)*spd, type:"BOSS_SNIPE", dead:false });
+      }});
     }
     function pSplit(enrage) {
       const boss=st.boss;
@@ -1182,6 +1207,7 @@
           b.dead = true;
           if (boss.shieldLeft>0) continue;
           boss.hp -= 1;
+          const p=st.players[b.ownerUid]; if (p) p.score += SCORE.BOSS_HIT;
           if (boss.hp<=0) { boss.alive = false; }
         }
       }
@@ -1216,6 +1242,7 @@
 
       if (newWave !== st.wave) { st.wave = newWave; spawnWave(newWave); }
 
+      // players
       for (const puid in st.players) {
         const p=st.players[puid];
         if (!p.alive) continue;
@@ -1349,6 +1376,7 @@
 
     await set(ref(db, PATHS.room(roomId)), room);
     await set(ref(db, PATHS.roomIndex(roomId)), { roomId, state: room.state, mode, hostName: currentUserName, createdAt: now, startedAt: 0 });
+
     await enterRoom(roomId);
   }
 
@@ -1367,9 +1395,7 @@
     ui.roomTag.textContent = "room:-";
     ui.readyBtn.style.display = "none";
     ui.retireBtn.style.display = "none";
-    ui.modeTag.textContent = "mode:-";
-    ui.stateTag.textContent = "state:-";
-    ui.youTag.textContent = "YOU:-";
+    ui.bgLayer.style.backgroundImage = "none";
 
     if (goLobby) setScreen("lobby");
   }
@@ -1381,6 +1407,9 @@
     ui.roomTag.style.display = "";
     ui.roomTag.textContent = `room:${roomId.slice(-6)}`;
     setScreen("game");
+
+    // ensure canvas uses stage sizing
+    resizeCanvas();
 
     stopInputSender = bindInputSenderForRoom(currentUserId, roomId, () => {
       const room = lastRoomCache;
@@ -1425,17 +1454,17 @@
         const btns = document.createElement("div");
         btns.className = "roomBtns";
 
-        const enterBtn = document.createElement("button");
-        enterBtn.className = "secondary small";
-        enterBtn.textContent = "入室";
-        enterBtn.onclick = async () => { await enterRoom(r.roomId); };
+        const joinBtn = document.createElement("button");
+        joinBtn.className = "secondary small";
+        joinBtn.textContent = "入室";
+        joinBtn.onclick = async () => { await enterRoom(r.roomId); };
 
         const watchBtn = document.createElement("button");
         watchBtn.className = "ghost small";
         watchBtn.textContent = "観戦";
         watchBtn.onclick = async () => { await enterRoom(r.roomId); };
 
-        btns.appendChild(enterBtn);
+        btns.appendChild(joinBtn);
         btns.appendChild(watchBtn);
 
         if (adminMode) {
@@ -1468,11 +1497,13 @@
   }
 
   // ---------------- Room subscribe + host loop ----------------
-  const activeHostLoops = new Map(); // roomId -> timer
-
+  const activeHostLoops = new Map(); // roomId -> { sim, simTimer, netTimer }
   function subscribeRoom(roomId) {
     const roomRef = ref(db, PATHS.room(roomId));
     const gameRef = ref(db, PATHS.roomGame(roomId));
+
+    if (currentRoomUnsub) currentRoomUnsub();
+    if (currentGameUnsub) currentGameUnsub();
 
     currentRoomUnsub = onValue(roomRef, async (snap) => {
       const room = snap.val();
@@ -1518,7 +1549,7 @@
         }
       }
 
-      // cleanup if nobody online
+      // auto cleanup: nobody online -> delete room (NO stale-game)
       await maybeRoomAutoCleanup(roomId, room);
 
       // backup: 7min -> finish (even if host loop stopped)
@@ -1529,7 +1560,7 @@
         }
       }
 
-      // start host loop
+      // host loop
       await startHostLoopIfNeeded(roomId, room);
 
       // finished -> delete room
@@ -1567,7 +1598,8 @@
 
     if (existing) {
       if (!isHost || !isPlaying) {
-        clearInterval(existing);
+        clearInterval(existing.simTimer);
+        clearInterval(existing.netTimer);
         activeHostLoops.delete(roomId);
       }
       return;
@@ -1575,18 +1607,16 @@
     if (!isHost || !isPlaying) return;
 
     const sim = createHostSim(room);
+
+    // write initial snapshot immediately
     await set(ref(db, PATHS.roomGame(roomId)), sim.snapshot());
 
-    const hz = 15;
-    const intervalMs = Math.floor(1000 / hz);
+    const simIntervalMs = Math.floor(1000 / SIM_HZ);
+    const netIntervalMs = Math.floor(1000 / NET_HZ);
 
-    const timer = setInterval(async () => {
+    const simTimer = setInterval(async () => {
       const roomNow = (await get(ref(db, PATHS.room(roomId)))).val();
-      if (!roomNow) {
-        clearInterval(timer);
-        activeHostLoops.delete(roomId);
-        return;
-      }
+      if (!roomNow) return;
       if (roomNow.state !== "playing") return;
 
       // 7min -> finish
@@ -1608,29 +1638,51 @@
         return;
       }
 
+      // step sim at 60Hz
       sim.applyInputs(inputs);
-      sim.step(intervalMs / 1000);
+      sim.step(simIntervalMs / 1000);
 
       if (sim.isAllDead()) {
         await update(ref(db, PATHS.room(roomId)), { state: "finished", finishedReason: "all_dead", updatedAt: Date.now() });
         await update(ref(db, PATHS.roomIndex(roomId)), { state: "finished" });
         return;
       }
+    }, simIntervalMs);
 
+    const netTimer = setInterval(async () => {
+      const roomNow = (await get(ref(db, PATHS.room(roomId)))).val();
+      if (!roomNow || roomNow.state !== "playing") return;
       await set(ref(db, PATHS.roomGame(roomId)), sim.snapshot());
-    }, intervalMs);
+    }, netIntervalMs);
 
-    activeHostLoops.set(roomId, timer);
+    activeHostLoops.set(roomId, { sim, simTimer, netTimer });
   }
 
-  // ---------------- Boot ----------------
+  // ---------------- Boot + actions ----------------
+  const MAX_ROOMS = 5;
+  const ROOM_MAX_PLAY_MS = 7 * 60 * 1000;
+
+  let currentUserId = null;
+  let currentUserName = "";
+
+  let currentRoomId = null;
+  let currentRoomUnsub = null;
+  let currentGameUnsub = null;
+  let stopInputSender = null;
+  let lastRoomCache = null;
+
+  async function countRooms() {
+    const snap = await get(ref(db, PATHS.roomsIndex));
+    const v = snap.val() || {};
+    return Object.keys(v).length;
+  }
+
   await signInAnonymously(auth);
 
   onAuthStateChanged(auth, async (user) => {
     if (!user) return;
 
-    const userId = user.uid;
-    currentUserId = userId;
+    currentUserId = user.uid;
     ui.me.textContent = `uid: ${currentUserId.slice(0, 8)}…`;
 
     await bindPresence(currentUserId);
@@ -1642,7 +1694,7 @@
       setScreen("name");
       ui.nameHint.textContent = "名前を入力して決定してください";
     } else {
-      ui.myNameLabel.textContent = currentUserName;
+      ui.myNameLabel.textContent = `名前: ${currentUserName}`;
       setScreen("lobby");
     }
 
@@ -1651,7 +1703,7 @@
       if (!v) { ui.nameHint.textContent = "名前を入力してください"; return; }
       await setMyName(currentUserId, v);
       currentUserName = v;
-      ui.myNameLabel.textContent = currentUserName;
+      ui.myNameLabel.textContent = `名前: ${currentUserName}`;
       setScreen("lobby");
     };
 
@@ -1662,11 +1714,52 @@
 
     ui.createSoloBtn.onclick = async () => {
       if (!currentUserName) { alert("名前を先に決定してください"); return; }
-      await createRoom("solo");
+      const roomsCount = await countRooms();
+      if (roomsCount >= MAX_ROOMS) { ui.createHint.textContent = "部屋数が上限（5）です"; return; }
+      const roomId = `room_${Date.now()}_${uuidShort()}`;
+      const now = Date.now();
+      const room = {
+        roomId,
+        state: "preparing",
+        mode: "solo",
+        hostUid: currentUserId,
+        hostName: currentUserName,
+        p1Uid: currentUserId,
+        p2Uid: null,
+        recruiting: null,
+        ready: { [currentUserId]: false },
+        createdAt: now,
+        updatedAt: now,
+        startedAt: 0
+      };
+      await set(ref(db, PATHS.room(roomId)), room);
+      await set(ref(db, PATHS.roomIndex(roomId)), { roomId, state: room.state, mode: room.mode, hostName: currentUserName, createdAt: now, startedAt: 0 });
+      await enterRoom(roomId);
     };
+
     ui.createMultiBtn.onclick = async () => {
       if (!currentUserName) { alert("名前を先に決定してください"); return; }
-      await createRoom("multi");
+      const roomsCount = await countRooms();
+      if (roomsCount >= MAX_ROOMS) { ui.createHint.textContent = "部屋数が上限（5）です"; return; }
+      const roomId = `room_${Date.now()}_${uuidShort()}`;
+      const now = Date.now();
+      const room = {
+        roomId,
+        state: "recruiting",
+        mode: "multi",
+        hostUid: currentUserId,
+        hostName: currentUserName,
+        p1Uid: currentUserId,
+        p2Uid: null,
+        recruiting: { joinerUid: null },
+        ready: { [currentUserId]: false },
+        createdAt: now,
+        updatedAt: now,
+        startedAt: 0
+      };
+      await set(ref(db, PATHS.room(roomId)), room);
+      await set(ref(db, PATHS.roomIndex(roomId)), { roomId, state: room.state, mode: room.mode, hostName: currentUserName, createdAt: now, startedAt: 0 });
+      await enterRoom(roomId);
     };
 
     ui.leaveRoomBtn.onclick = async () => {

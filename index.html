@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Invader Rooms (RTDB) - Solo Only + Host Lock + Wave Banner</title>
+  <title>Invader Rooms (RTDB) - Solo Only + Host Lock + Wave Banner + Balance Update</title>
   <style>
     :root { color-scheme: dark; }
     html, body { height: 100%; margin: 0; background:#05070b; color:#e8eefc; font-family: system-ui, -apple-system, Segoe UI, Roboto, "Noto Sans JP", sans-serif; overflow:hidden; }
@@ -100,7 +100,6 @@
     .dot { width:8px; height:8px; border-radius:50%; display:inline-block; background:#9fb0cc; }
     .dot.playing { background:#2bff88; }
     .dot.preparing { background:#ffd166; }
-    .dot.recruiting { background:#7bdff2; }
     .dot.finished { background:#ff3b3b; }
 
     #gameWrap { height:100%; display:flex; flex-direction:column; }
@@ -145,7 +144,6 @@
     #ann { position:absolute; inset:0; display:none; align-items:center; justify-content:center; background: rgba(0,0,0,.60); z-index: 20; }
     #ann .card { width:min(560px, 92vw); }
 
-    /* ★追加：Waveバナー */
     #waveBanner {
       position:absolute;
       inset:0;
@@ -200,7 +198,7 @@
       <div class="panel card">
         <div class="logo">INVADER</div>
         <h1>名前を入力</h1>
-        <p class="muted" style="margin:0 0 12px 0;">最初に1回だけ必要です（後で変更可）。</p>
+        <p class="muted" style="margin:0 0 12px 0;">最初に1回だけ必���です（後で変更可）。</p>
         <input id="nameInput" placeholder="表示名（20文字まで）" maxlength="20" />
         <div class="row" style="margin-top:12px; justify-content:flex-end;">
           <button id="saveNameBtn">決定</button>
@@ -218,7 +216,7 @@
           <div class="muted" style="margin-top:8px; line-height:1.6;">
             操作：<b>A/D</b> 移動、<b>Space</b> 連射（CDなし）<br/>
             Wave：30/40/90/140秒（以降ボス継続・激化）<br/>
-            終了：全員死亡 / ホストリタイア / 7分経過（強制終了）
+            ソロ専用
           </div>
 
           <div class="row" style="margin-top:12px;">
@@ -520,6 +518,8 @@
     bulletH: 16 * 1.5,
     eBulletS: 6 * 1.5,
     hazardR: 10 * 1.5,
+
+    absorberR: 26,
   };
 
   function clearFull() {
@@ -565,7 +565,6 @@
     ctx.fillText(`BOSS HP ${boss.hp}/${boss.hpMax}  PHASE:${boss.phase}${shield}`, x + 6, y + 11);
   }
 
-  // ---------------- Smooth motion ----------------
   let latestSnap = null;
   let renderState = null;
   const EMA_ALPHA = 0.18;
@@ -613,6 +612,8 @@
     renderState.mode = latestSnap.mode;
     renderState.tick = latestSnap.tick;
     renderState.sentAt = latestSnap.sentAt;
+    renderState.waveDelayLeft = latestSnap.waveDelayLeft;
+    renderState.bossKilled = latestSnap.bossKilled;
 
     const pMap = new Map((renderState.players||[]).map(p => [p.uid, p]));
     renderState.players = (latestSnap.players||[]).map(np => {
@@ -640,12 +641,49 @@
     smoothListByIdSafe("hazards", alpha);
     smoothListByIdSafe("playerBullets", alpha);
     smoothListByIdSafe("enemyBullets", alpha);
+    smoothListByIdSafe("absorbers", alpha);
   }
 
   function drawState(g, myUid) {
     clearFull();
     ui.hud.style.display = "";
     drawBackgroundForWave(g.wave || 1);
+
+    // Absorbers (Wave3 bullet-stopper) - visual
+    if (Array.isArray(g.absorbers)) {
+      for (const a of g.absorbers) {
+        const s = toScreen(a.x, a.y);
+        const t = (g.sentAt ? (Date.now() - g.sentAt) / 1000 : 0) + (a.t ?? 0);
+        const pulse = 0.5 + 0.5 * Math.sin(t * 4.0);
+        const r = SIZE.absorberR * (0.85 + 0.15 * pulse);
+
+        ctx.save();
+        ctx.globalAlpha = 0.25;
+        ctx.fillStyle = "#7bdff2";
+        ctx.beginPath();
+        ctx.arc(s.x, s.y, r, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.globalAlpha = 0.95;
+        ctx.strokeStyle = "rgba(123,223,242,.95)";
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(s.x, s.y, r, 0, Math.PI * 2);
+        ctx.stroke();
+
+        // swirl rings
+        ctx.globalAlpha = 0.45;
+        ctx.strokeStyle = "rgba(255,255,255,.45)";
+        ctx.lineWidth = 1;
+        for (let i=0;i<3;i++) {
+          const rr = r * (0.45 + 0.18*i) + pulse*3;
+          ctx.beginPath();
+          ctx.arc(s.x, s.y, rr, 0, Math.PI * 2);
+          ctx.stroke();
+        }
+        ctx.restore();
+      }
+    }
 
     const my = (g.players || []).find(p => p.uid === myUid);
     if (my) {
@@ -674,10 +712,18 @@
 
     for (const hz of (g.hazards || [])) {
       const s = toScreen(hz.x, hz.y);
-      ctx.fillStyle = "#ff4d6d";
+      ctx.fillStyle = hz.type === "BOMB" ? "#ff3b3b" : "#ff4d6d";
       ctx.beginPath();
       ctx.arc(s.x, s.y, SIZE.hazardR, 0, Math.PI * 2);
       ctx.fill();
+
+      // bomb ring
+      if (hz.type === "BOMB") {
+        ctx.strokeStyle = "rgba(255,255,255,.8)";
+        ctx.lineWidth = 2;
+        ctx.stroke();
+        ctx.lineWidth = 1;
+      }
     }
 
     if (g.boss && g.boss.alive) {
@@ -720,9 +766,20 @@
         (b.type || "").includes("SNIPE") ? "#ffffff" :
         (b.type || "").includes("WAVE") ? "#b4f8c8" :
         (b.type || "").includes("SPLIT") ? "#ffd6ff" :
+        (b.type || "").includes("LASER_WARN") ? "#ffd166" :
+        (b.type || "").includes("LASER") ? "#ff3b3b" :
         "#ffccff";
       ctx.fillStyle = col;
-      ctx.fillRect(s.x - SIZE.eBulletS/2, s.y - SIZE.eBulletS/2, SIZE.eBulletS, SIZE.eBulletS);
+
+      if ((b.type || "").includes("LASER")) {
+        // laser as vertical bar
+        const w = 10;
+        ctx.globalAlpha = (b.type || "").includes("WARN") ? 0.45 : 0.85;
+        ctx.fillRect(s.x - w/2, 0, w, stageH);
+        ctx.globalAlpha = 1;
+      } else {
+        ctx.fillRect(s.x - SIZE.eBulletS/2, s.y - SIZE.eBulletS/2, SIZE.eBulletS, SIZE.eBulletS);
+      }
     }
   }
 
@@ -735,18 +792,7 @@
     ui.hud.style.display = "none";
   }
 
-  // ---------------- Wave banner controller ----------------
-  let waveBannerShownFor = null;
-  function showWaveBanner(wave) {
-    waveBannerShownFor = wave;
-    ui.waveBannerTitle.textContent = `WAVE ${wave}/4`;
-    ui.waveBannerSub.textContent = `5秒後に開始`;
-    ui.waveBanner.style.display = "flex";
-  }
-  function hideWaveBanner() {
-    ui.waveBanner.style.display = "none";
-  }
-
+  function hideWaveBanner() { ui.waveBanner.style.display = "none"; }
   function startRenderLoop() {
     function frame() {
       if (latestSnap && state.userId) {
@@ -770,10 +816,10 @@
             lastSeenSentAt = s;
           }
 
-          // ★Waveバナー：カウントダウン中は表示（ゲームはhost側で止めている）
-          if (latestSnap?.waveDelayLeft > 0) {
-            showWaveBanner(latestSnap.wave);
+          if ((latestSnap?.waveDelayLeft ?? 0) > 0) {
+            ui.waveBannerTitle.textContent = `WAVE ${latestSnap.wave}/4`;
             ui.waveBannerSub.textContent = `${Math.ceil(latestSnap.waveDelayLeft)}秒後に開始`;
+            ui.waveBanner.style.display = "flex";
           } else {
             if (ui.waveBanner.style.display !== "none") hideWaveBanner();
           }
@@ -836,21 +882,21 @@
     D: { fallSpeed: 0.10 }
   };
   const BOSS = {
-    hpMax: 40,
+    hpMax: 400,
     x: 0.5,
     y: 0.16,
     baseBulletSpeed: 0.33,
-    shieldEvery: 9.0,
+    shieldEvery: 2.0,
     shieldDuration: 1.8,
-    moveSpeed: 0.18
+    moveSpeed: 0.22
   };
   const clamp = (v,a,b)=>Math.max(a,Math.min(b,v));
   const normalizeAngle=(a)=>{while(a>Math.PI)a-=Math.PI*2;while(a<-Math.PI)a+=Math.PI*2;return a;};
   const mulberry32=(a)=>()=>{let t=a+=0x6D2B79F5;t=Math.imul(t^(t>>>15),t|1);t^=t+Math.imul(t^(t>>>7),t|61);return((t^(t>>>14))>>>0)/4294967296;};
   const randChoice=(rng,arr)=>arr[Math.floor(rng()*arr.length)];
-  const bossPhase = (b)=> b.hp>30?1:b.hp>20?2:b.hp>10?3:4;
+  const bossPhase = (b)=> b.hp>300?1:b.hp>200?2:b.hp>100?3:4;
 
-  const WAVE_START_DELAY = 5.0; // ★追加：wave切替後 5秒待って開始
+  const WAVE_START_DELAY = 5.0;
 
   function createHostSim(room) {
     const p1Uid = room.p1Uid;
@@ -862,13 +908,16 @@
       elapsed: 0,
       wave: 1,
 
-      waveDelayLeft: WAVE_START_DELAY, // ★追加：開始待ち
+      waveDelayLeft: WAVE_START_DELAY,
+      bossKilled: false,
 
       formation: { dir: 1, xOffset: 0, yOffset: 0, speedBase: 0.10, stepDown: 0.03 },
 
       players: {},
       enemies: [],
       hazards: [],
+      absorbers: [],
+
       playerBullets: [],
       enemyBullets: [],
       boss: null,
@@ -876,8 +925,13 @@
       _hazAcc: 0,
       _eAcc: 0,
       _bossRespawnAcc: 0,
+      _w2SpawnAcc: 0,
+      _w2BombAcc: 0,
+      _w3AbsAcc: 0,
+
       nextEnemyId: 1,
       nextHazardId: 1,
+      nextAbsId: 1,
       nextPBulletId: 1,
       nextEBulletId: 1,
 
@@ -891,8 +945,9 @@
     function cleanupOutOfBounds() {
       st.enemies = (st.enemies || []).filter(e => e && e.alive !== false && !isOutNorm(e.x, e.y));
       st.hazards = (st.hazards || []).filter(h => h && h.alive !== false && !isOutNorm(h.x, h.y));
+      st.absorbers = (st.absorbers || []).filter(a => a && a.alive !== false && !isOutNorm(a.x, a.y, 0.35));
       st.playerBullets = (st.playerBullets || []).filter(b => b && !b.dead && !isOutNorm(b.x, b.y));
-      st.enemyBullets  = (st.enemyBullets  || []).filter(b => b && !b.dead && !isOutNorm(b.x, b.y));
+      st.enemyBullets  = (st.enemyBullets  || []).filter(b => b && !b.dead && !isOutNorm(b.x, b.y, 0.35));
     }
 
     const mkPlayer = (playerUid, color, x) => ({ uid: playerUid, color, x, y: 0.9, alive: true, score: 0, fireAcc: 0 });
@@ -919,29 +974,56 @@
         shieldAcc:0, shieldLeft:0,
         feintQueue:[],
         dashLeft:0, dashDir:1,
+
+        laserQueue: [],
       };
+    }
+
+    function resetWaveRuntimeAccumulators() {
+      st._hazAcc = 0;
+      st._eAcc = 0;
+      st._w2SpawnAcc = 0;
+      st._w2BombAcc = 0;
+      st._w3AbsAcc = 0;
     }
 
     function spawnWave(w) {
       st.enemies = [];
       st.hazards = [];
+      st.absorbers = [];
       st.enemyBullets = [];
       st.playerBullets = [];
-      st._hazAcc = 0;
-      st._eAcc = 0;
+      resetWaveRuntimeAccumulators();
 
       st.formation.dir = 1; st.formation.xOffset = 0; st.formation.yOffset = 0;
       st.boss = null;
 
       if (w===1) spawnFormation(["A"]);
-      if (w===2) spawnFormation(["A","B","C"]);
+      if (w===2) {
+        // wave2は「時間中ランダム湧き」なので初期は少しだけ置く
+        spawnFormation(["A","B","C"]);
+      }
       if (w===3) spawnFormation(["B","C"]);
       if (w===4) spawnBoss();
 
-      st.waveDelayLeft = WAVE_START_DELAY; // ★追加：wave切替のたびに5秒待つ
+      st.waveDelayLeft = WAVE_START_DELAY;
       cleanupOutOfBounds();
     }
     spawnWave(1);
+
+    function waveTimeBoundaries() {
+      const t = st.elapsed;
+      const tW1=WAVE_DUR[0], tW2=tW1+WAVE_DUR[1], tW3=tW2+WAVE_DUR[2];
+      return { tW1, tW2, tW3, t };
+    }
+
+    function waveRemainingSeconds(w) {
+      const { tW1, tW2, tW3, t } = waveTimeBoundaries();
+      if (w === 1) return Math.max(0, tW1 - t);
+      if (w === 2) return Math.max(0, tW2 - t);
+      if (w === 3) return Math.max(0, tW3 - t);
+      return 0;
+    }
 
     function pickAlivePlayer() {
       const arr = Object.values(st.players).filter(p=>p.alive);
@@ -982,7 +1064,36 @@
       }
     }
 
-    function spawnHazards(dt) {
+    function updateAbsorbers(dt) {
+      for (const a of st.absorbers) {
+        if (!a.alive) continue;
+        a.t = (a.t ?? 0) + dt;
+        a.life = (a.life ?? 0) + dt;
+        // mild drift
+        a.x = clamp(a.x + Math.sin(a.t*0.9)*0.004*dt, 0.12, 0.88);
+        a.y = clamp(a.y + Math.sin(a.t*1.1)*0.003*dt, 0.12, 0.78);
+        if (a.life > (a.lifeMax ?? 8.0)) a.alive = false;
+      }
+      st.absorbers = st.absorbers.filter(a => a.alive);
+    }
+
+    function absorbPlayerBullets() {
+      if (!st.absorbers.length || !st.playerBullets.length) return;
+      for (const b of st.playerBullets) {
+        if (b.dead) continue;
+        for (const a of st.absorbers) {
+          if (!a.alive) continue;
+          const dx = a.x - b.x, dy = a.y - b.y;
+          const r = (a.r ?? 0.06);
+          if (dx*dx + dy*dy <= r*r) {
+            b.dead = true;
+            break;
+          }
+        }
+      }
+    }
+
+    function spawnHazardsWave3(dt) {
       if (st.wave!==3) return;
       st._hazAcc += dt/8;
       if (st._hazAcc<1) return;
@@ -999,6 +1110,48 @@
       st.enemies.push({ id:`en_${st.nextEnemyId++}`, type:"E", x0, x:x0, y:-0.06, t:0, alive:true, fireAcc:0 });
     }
 
+    // ★Wave2: 時間中ランダムに湧く + 爆弾
+    function spawnWave2Random(dt) {
+      if (st.wave !== 2) return;
+      // 0.9秒に1回くらい（乱数で少しブレ）
+      st._w2SpawnAcc += dt / (0.75 + st.rng()*0.55);
+      if (st._w2SpawnAcc < 1) return;
+      st._w2SpawnAcc -= 1;
+
+      const type = randChoice(st.rng, ["A","B","B","C","A","C"]); // B/C多め
+      const x0 = 0.10 + st.rng()*0.80;
+      const y0 = -0.06 - st.rng()*0.06;
+
+      // 編隊じゃなく単体出現（落ちつつ少し揺れる）
+      st.enemies.push({ id:`en_${st.nextEnemyId++}`, type, x0, x:x0, y:y0, t:0, alive:true, fireAcc:0, w2Solo:true });
+    }
+
+    function updateWave2SoloEnemies(dt) {
+      if (st.wave !== 2) return;
+      for (const e of st.enemies) {
+        if (!e.alive || !e.w2Solo) continue;
+        e.t = (e.t ?? 0) + dt;
+        e.x = e.x0 + Math.sin(e.t*1.6) * 0.08;
+        e.y += 0.08*dt;
+        if (e.y > 1.15) e.alive = false;
+      }
+    }
+
+    function spawnBombsWave2(dt) {
+      if (st.wave !== 2) return;
+      // 1.2秒に1回くらいで爆弾
+      st._w2BombAcc += dt / (0.85 + st.rng()*0.85);
+      if (st._w2BombAcc < 1) return;
+      st._w2BombAcc -= 1;
+      st.hazards.push({
+        id:`hz_${st.nextHazardId++}`,
+        type:"BOMB",
+        x:0.08 + st.rng()*0.84,
+        y:-0.08,
+        alive:true
+      });
+    }
+
     function movePlayerBullets(dt) {
       for (const b of st.playerBullets) b.y -= 0.85*dt;
       st.playerBullets = st.playerBullets.filter(b=>b.y>-0.1 && !b.dead);
@@ -1007,6 +1160,24 @@
     function moveEnemyBullets(dt) {
       for (const b of st.enemyBullets) {
         if (b.dead) continue;
+
+        if ((b.type || "").includes("LASER_WARN")) {
+          b.life = (b.life ?? 0) + dt;
+          if (b.life >= (b.warnFor ?? 0.7)) {
+            // convert to laser
+            b.type = "BOSS_LASER";
+            b.life = 0;
+            b.laserFor = b.laserFor ?? 0.35;
+          }
+          continue;
+        }
+
+        if ((b.type || "").includes("BOSS_LASER")) {
+          b.life = (b.life ?? 0) + dt;
+          if (b.life >= (b.laserFor ?? 0.35)) b.dead = true;
+          continue;
+        }
+
         if (b.waveAmp) {
           b.waveT=(b.waveT??0)+dt;
           b.x += Math.sin(b.waveT*b.waveFreq)*b.waveAmp*dt;
@@ -1029,7 +1200,7 @@
             const desired=Math.atan2(dy,dx);
             const cur=Math.atan2(b.vy,b.vx);
             const diff=normalizeAngle(desired-cur);
-            const maxTurn=2.2*dt;
+            const maxTurn=(b.turnRate ?? 2.2)*dt;
             const turned=cur+Math.max(-maxTurn, Math.min(maxTurn, diff));
             const spd=Math.hypot(b.vx,b.vy);
             b.vx=Math.cos(turned)*spd;
@@ -1038,7 +1209,7 @@
         }
         b.x += b.vx*dt;
         b.y += b.vy*dt;
-        if (b.y>1.2 || b.x<-0.2 || b.x>1.2) b.dead=true;
+        if (b.y>1.2 || b.x<-0.2 || b.x>1.2 || b.y<-0.35) b.dead=true;
       }
       st.enemyBullets = st.enemyBullets.filter(b=>!b.dead);
     }
@@ -1050,7 +1221,11 @@
         if (!e.alive) continue;
         if (!(e.type==="A"||e.type==="B"||e.type==="C"||e.type==="E")) continue;
         const cfg = ENEMY[e.type];
-        e.fireAcc=(e.fireAcc??0)+cfg.firePerSec*dt;
+
+        // ★Wave2だけ B/C は3倍
+        const mult = (st.wave===2 && (e.type==="B"||e.type==="C")) ? 3 : 1;
+
+        e.fireAcc=(e.fireAcc??0)+(cfg.firePerSec*mult)*dt;
         while (e.fireAcc>=1) {
           e.fireAcc-=1;
           if (e.type==="C") {
@@ -1058,7 +1233,15 @@
             const dx=t.x-e.x, dy=t.y-e.y;
             const ang=Math.atan2(dy,dx);
             const spd=cfg.bulletSpeed;
-            st.enemyBullets.push({ id:`eb_${st.nextEBulletId++}`, x:e.x,y:e.y, vx:Math.cos(ang)*spd, vy:Math.sin(ang)*spd, type:"C_HOMING", homingLeft:cfg.homingTime, dead:false });
+            st.enemyBullets.push({
+              id:`eb_${st.nextEBulletId++}`,
+              x:e.x,y:e.y,
+              vx:Math.cos(ang)*spd, vy:Math.sin(ang)*spd,
+              type:"C_HOMING",
+              homingLeft:cfg.homingTime,
+              turnRate: cfg.turnRate,
+              dead:false
+            });
           } else {
             const t=pickAlivePlayer();
             const aim=t?Math.max(-0.25, Math.min(0.25, (t.x-e.x)*1.2)):0;
@@ -1099,6 +1282,17 @@
     function collideEnemyBulletsToPlayers() {
       for (const b of st.enemyBullets) {
         if (b.dead) continue;
+
+        // laser collision (vertical bar)
+        if ((b.type || "").includes("BOSS_LASER")) {
+          for (const puid in st.players) {
+            const p=st.players[puid]; if(!p.alive) continue;
+            const dx = Math.abs((p.x ?? 0) - (b.x ?? 0));
+            if (dx < 0.03) { p.alive=false; }
+          }
+          continue;
+        }
+
         for (const puid in st.players) {
           const p=st.players[puid]; if(!p.alive) continue;
           const dx=p.x-b.x, dy=p.y-b.y;
@@ -1108,10 +1302,10 @@
     }
 
     function doBossAttack(phase, enrage) {
-      const patterns = [pRing, pRightSide];
+      const patterns = [pRing, pRightSide, pLaserWall];
       if (phase>=2) patterns.push(pSnipe, pSplit);
       if (phase>=3) patterns.push(pWave, pHomingWeak, pFeint);
-      if (phase>=4) patterns.push(pDash, pSnake);
+      if (phase>=4) patterns.push(pDash, pSnake, pCone);
       const p = randChoice(st.rng, patterns);
       p(enrage);
     }
@@ -1119,8 +1313,8 @@
     function pRing(enrage) {
       const boss=st.boss;
       const phase=bossPhase(boss);
-      const n = phase===1?10:phase===2?12:phase===3?14:16;
-      const spd=BOSS.baseBulletSpeed*(1+0.08*(phase-1))*enrage;
+      const n = phase===1?12:phase===2?16:phase===3?18:22;
+      const spd=BOSS.baseBulletSpeed*(1+0.10*(phase-1))*enrage;
       for (let i=0;i<n;i++){
         const a=Math.PI*2*(i/n);
         st.enemyBullets.push({ id:`eb_${st.nextEBulletId++}`, x:boss.x,y:boss.y, vx:Math.cos(a)*spd, vy:Math.sin(a)*spd, type:"BOSS_RING", dead:false });
@@ -1128,32 +1322,32 @@
     }
     function pRightSide(enrage) {
       const boss=st.boss;
-      const spd=BOSS.baseBulletSpeed*1.05*enrage;
-      const n=8;
+      const spd=BOSS.baseBulletSpeed*1.15*enrage;
+      const n=10;
       for (let i=0;i<n;i++){
         const a=(-Math.PI/2)+(i/(n-1))*(Math.PI/2);
-        const vx=Math.cos(a)*spd+0.18;
-        const vy=Math.sin(a)*spd+0.45;
+        const vx=Math.cos(a)*spd+0.20;
+        const vy=Math.sin(a)*spd+0.55;
         st.enemyBullets.push({ id:`eb_${st.nextEBulletId++}`, x:boss.x,y:boss.y, vx,vy, type:"BOSS_RIGHT", dead:false });
       }
     }
     function pWave(enrage) {
       const boss=st.boss;
       const spd=BOSS.baseBulletSpeed*enrage;
-      const n=6;
+      const n=7;
       for (let i=0;i<n;i++){
         const xoff=(i-(n-1)/2)*0.03;
-        st.enemyBullets.push({ id:`eb_${st.nextEBulletId++}`, x:boss.x+xoff,y:boss.y, vx:0, vy:spd, waveAmp:0.22, waveFreq:7.0, type:"BOSS_WAVE", dead:false });
+        st.enemyBullets.push({ id:`eb_${st.nextEBulletId++}`, x:boss.x+xoff,y:boss.y, vx:0, vy:spd, waveAmp:0.24, waveFreq:7.5, type:"BOSS_WAVE", dead:false });
       }
     }
     function pFeint(enrage) {
       const boss=st.boss;
-      const delay=0.55+(st.rng()*0.45);
+      const delay=0.45+(st.rng()*0.35);
       boss.feintQueue.push({
         t: delay,
         pattern: () => {
-          const spd=BOSS.baseBulletSpeed*0.95*enrage;
-          const n=8;
+          const spd=BOSS.baseBulletSpeed*1.05*enrage;
+          const n=10;
           for (let i=0;i<n;i++){
             const a=Math.PI*2*(i/n);
             st.enemyBullets.push({ id:`eb_${st.nextEBulletId++}`, x:boss.x,y:boss.y, vx:Math.cos(a)*spd, vy:Math.sin(a)*spd, type:"BOSS_FEINT", dead:false });
@@ -1165,18 +1359,18 @@
       const boss=st.boss;
       const target=pickAlivePlayer(); if(!target) return;
       boss.feintQueue.push({
-        t: 0.65,
+        t: 0.55,
         pattern: () => {
           const dx=target.x-boss.x, dy=target.y-boss.y;
           const a=Math.atan2(dy,dx);
-          const spd=BOSS.baseBulletSpeed*1.9*enrage;
+          const spd=BOSS.baseBulletSpeed*2.2*enrage;
           st.enemyBullets.push({ id:`eb_${st.nextEBulletId++}`, x:boss.x,y:boss.y, vx:Math.cos(a)*spd, vy:Math.sin(a)*spd, type:"BOSS_SNIPE", dead:false });
         }
       });
     }
     function pSplit(enrage) {
       const boss=st.boss;
-      const spd=BOSS.baseBulletSpeed*1.1*enrage;
+      const spd=BOSS.baseBulletSpeed*1.25*enrage;
       st.enemyBullets.push({ id:`eb_${st.nextEBulletId++}`, x:boss.x,y:boss.y, vx:0, vy:spd, splitAt:0.55, splitDone:false, type:"BOSS_SPLIT", dead:false });
     }
     function pHomingWeak(enrage) {
@@ -1184,21 +1378,53 @@
       const target=pickAlivePlayer(); if(!target) return;
       const dx=target.x-boss.x, dy=target.y-boss.y;
       const a=Math.atan2(dy,dx);
-      const spd=BOSS.baseBulletSpeed*1.05*enrage;
-      st.enemyBullets.push({ id:`eb_${st.nextEBulletId++}`, x:boss.x,y:boss.y, vx:Math.cos(a)*spd, vy:Math.sin(a)*spd, type:"C_HOMING", homingLeft:0.75, dead:false });
+      const spd=BOSS.baseBulletSpeed*1.15*enrage;
+      st.enemyBullets.push({ id:`eb_${st.nextEBulletId++}`, x:boss.x,y:boss.y, vx:Math.cos(a)*spd, vy:Math.sin(a)*spd, type:"C_HOMING", homingLeft:0.9, turnRate: 2.8, dead:false });
     }
     function pDash(enrage) {
       const boss=st.boss;
-      boss.dashLeft = 0.8*Math.min(1.4,enrage);
+      boss.dashLeft = 0.9*Math.min(1.5,enrage);
       boss.dashDir = (st.rng()<0.5) ? -1 : 1;
     }
     function pSnake(enrage) {
       const boss=st.boss;
-      const spd=BOSS.baseBulletSpeed*0.95*enrage;
-      const n=4;
+      const spd=BOSS.baseBulletSpeed*1.05*enrage;
+      const n=5;
       for (let i=0;i<n;i++){
         const xoff=(i-(n-1)/2)*0.05;
-        st.enemyBullets.push({ id:`eb_${st.nextEBulletId++}`, x:boss.x+xoff,y:boss.y, vx:0, vy:spd, waveAmp:0.30, waveFreq:9.5, type:"BOSS_SNAKE", dead:false });
+        st.enemyBullets.push({ id:`eb_${st.nextEBulletId++}`, x:boss.x+xoff,y:boss.y, vx:0, vy:spd, waveAmp:0.32, waveFreq:9.8, type:"BOSS_SNAKE", dead:false });
+      }
+    }
+
+    // ★新技：レーザー予告→発射（避けるのが楽しい）
+    function pLaserWall(enrage) {
+      const boss = st.boss;
+      const n = 3 + (bossPhase(boss) >= 3 ? 1 : 0);
+      for (let i=0;i<n;i++) {
+        const x = 0.18 + st.rng()*0.64;
+        st.enemyBullets.push({
+          id:`eb_${st.nextEBulletId++}`,
+          x, y: 0.0,
+          type:"BOSS_LASER_WARN",
+          warnFor: 0.7 / Math.min(1.4, enrage),
+          laserFor: 0.35 + 0.10*st.rng(),
+          dead:false
+        });
+      }
+    }
+
+    // ★新技：コーン弾幕（安全地帯を探すのが楽しい）
+    function pCone(enrage) {
+      const boss=st.boss;
+      const target=pickAlivePlayer();
+      const baseA = target ? Math.atan2(target.y-boss.y, target.x-boss.x) : Math.PI/2;
+      const spread = Math.PI/2.6;
+      const n = 16;
+      const spd = BOSS.baseBulletSpeed * 1.05 * enrage;
+      for (let i=0;i<n;i++){
+        const t = (i/(n-1))*2-1; // -1..1
+        const a = baseA + t*spread;
+        st.enemyBullets.push({ id:`eb_${st.nextEBulletId++}`, x:boss.x,y:boss.y, vx:Math.cos(a)*spd, vy:Math.sin(a)*spd, type:"BOSS_CONE", dead:false });
       }
     }
 
@@ -1208,17 +1434,21 @@
 
       boss.time += dt;
       const over = Math.max(0, wave4Elapsed - WAVE_DUR[3]);
-      const enrage = 1 + over * 0.012;
+      const enrage = 1 + over * 0.015;
 
+      // 横移動増 + 前後(y)移動追加
       if (boss.dashLeft>0) {
         boss.dashLeft -= dt;
-        boss.x += boss.dashDir*(BOSS.moveSpeed*3.2)*dt;
-        if (boss.x<0.12){ boss.x=0.12; boss.dashDir=1; }
-        if (boss.x>0.88){ boss.x=0.88; boss.dashDir=-1; }
+        boss.x += boss.dashDir*(BOSS.moveSpeed*3.3)*dt;
+        boss.y += 0.22*dt; // 前に出る
+        if (boss.x<0.10){ boss.x=0.10; boss.dashDir=1; }
+        if (boss.x>0.90){ boss.x=0.90; boss.dashDir=-1; }
       } else {
-        boss.x += Math.sin(boss.time*0.9)*0.06*dt;
-        boss.x = clamp(boss.x,0.12,0.88);
+        boss.x += Math.sin(boss.time*1.2)*0.085*dt;
+        boss.y += Math.sin(boss.time*0.9)*0.04*dt;
       }
+      boss.x = clamp(boss.x,0.10,0.90);
+      boss.y = clamp(boss.y,0.12,0.32);
 
       boss.shieldAcc += dt;
       if (boss.shieldLeft>0) boss.shieldLeft -= dt;
@@ -1234,9 +1464,9 @@
       }
 
       const phase = bossPhase(boss);
-      const baseAttacksPerSec = phase===1?0.55:phase===2?0.75:phase===3?0.95:1.20;
-      boss.attackAcc += baseAttacksPerSec * Math.min(2.2,enrage) * dt;
-      while (boss.attackAcc >= 1) { boss.attackAcc -= 1; doBossAttack(phase, Math.min(2.2,enrage)); }
+      const baseAttacksPerSec = phase===1?0.85:phase===2?1.05:phase===3?1.25:1.55;
+      boss.attackAcc += baseAttacksPerSec * Math.min(2.4,enrage) * dt;
+      while (boss.attackAcc >= 1) { boss.attackAcc -= 1; doBossAttack(phase, Math.min(2.4,enrage)); }
     }
 
     function collidePlayerBulletsToBoss() {
@@ -1250,7 +1480,11 @@
           if (boss.shieldLeft>0) continue;
           boss.hp -= 1;
           const p=st.players[b.ownerUid]; if (p) p.score += SCORE.BOSS_HIT;
-          if (boss.hp<=0) boss.alive = false;
+          if (boss.hp<=0) {
+            boss.alive = false;
+            st.bossKilled = true;
+            const pl = st.players[b.ownerUid]; if (pl) pl.score += SCORE.BOSS_KILL;
+          }
         }
       }
     }
@@ -1267,21 +1501,42 @@
 
     function isAllDead() { return Object.values(st.players).every(p=>!p.alive); }
 
+    function isWaveClearedForRespawn() {
+      if (st.wave > 3) return false;
+      if (st.waveDelayLeft > 0) return false;
+      const aliveEnemies = st.enemies.some(e => e.alive);
+      const aliveHaz = st.hazards.some(h => h.alive);
+      const anyEnemyBullets = st.enemyBullets.some(b => !b.dead);
+      const anyAbs = st.absorbers.some(a => a.alive);
+      // 吸収装置は残してもいいが、全滅復活はテンポ重視で「敵0なら復活」でOKにする
+      return !aliveEnemies && !aliveHaz && !anyEnemyBullets && (waveRemainingSeconds(st.wave) > 3.0);
+    }
+
+    function respawnNonBossForWave(w) {
+      // waveは維持、残り時間まで繰り返し復活
+      st.enemies = [];
+      st.hazards = [];
+      st.enemyBullets = [];
+      st.playerBullets = st.playerBullets.filter(b => !b.dead); // プレイヤー弾は残してもいいが軽く整理
+      if (w === 1) spawnFormation(["A"]);
+      if (w === 2) spawnFormation(["A","B","C"]);
+      if (w === 3) spawnFormation(["B","C"]);
+      cleanupOutOfBounds();
+    }
+
     function step(dt) {
       st.tick++;
 
-      // ★Wave待機中：カウントだけ減らす（ゲーム進行は止める）
       if (st.waveDelayLeft > 0) {
         st.waveDelayLeft = Math.max(0, st.waveDelayLeft - dt);
-        // 入力でプレイヤー位置だけ動かすかは好み。ここでは止める（完全停止）
         return;
       }
 
       st.elapsed += dt;
 
+      // wave決定（時間で進む）
       const t = st.elapsed;
       const tW1=WAVE_DUR[0], tW2=tW1+WAVE_DUR[1], tW3=tW2+WAVE_DUR[2];
-
       let newWave = st.wave;
       if (t < tW1) newWave=1;
       else if (t < tW2) newWave=2;
@@ -1290,6 +1545,7 @@
 
       if (newWave !== st.wave) { st.wave = newWave; spawnWave(newWave); return; }
 
+      // プレイヤー入力
       for (const puid in st.players) {
         const p=st.players[puid];
         if (!p.alive) continue;
@@ -1310,21 +1566,71 @@
         }
       }
 
-      if (st.wave<=3) {
+      // Wave別処理
+      if (st.wave === 1) {
+        updateFormation(dt);
+        enemyFire(dt);
+        moveEnemyBullets(dt);
+        collideEnemyBulletsToPlayers();
+        collidePlayerBulletsToEnemies();
+      }
+
+      if (st.wave === 2) {
+        // ★時間中ランダム湧き + 爆弾
+        spawnWave2Random(dt);
+        spawnBombsWave2(dt);
+
+        updateFormation(dt);
+        updateWave2SoloEnemies(dt);
+        updateHazards(dt);
+
+        enemyFire(dt);
+        moveEnemyBullets(dt);
+        collideEnemyBulletsToPlayers();
+        collideHazardsToPlayers();
+        collidePlayerBulletsToEnemies();
+      }
+
+      if (st.wave === 3) {
         updateFormation(dt);
         updateE(dt);
         updateHazards(dt);
+
+        // ★吸収装置出現頻度増（2.8秒に1回くらい）
+        st._w3AbsAcc += dt / (2.2 + st.rng()*1.1);
+        if (st._w3AbsAcc >= 1) {
+          st._w3AbsAcc -= 1;
+          st.absorbers.push({
+            id:`ab_${st.nextAbsId++}`,
+            x: 0.14 + st.rng()*0.72,
+            y: 0.18 + st.rng()*0.45,
+            r: 0.07,
+            alive: true,
+            life: 0,
+            lifeMax: 9.0
+          });
+        }
+
+        updateAbsorbers(dt);
+
         enemyFire(dt);
-        spawnHazards(dt);
+        spawnHazardsWave3(dt);
         spawnEIfNeeded(dt);
 
         moveEnemyBullets(dt);
         collideEnemyBulletsToPlayers();
         collideHazardsToPlayers();
+
+        movePlayerBullets(dt);
+        absorbPlayerBullets(); // ★A：プレイヤー弾だけ吸収
+        st.playerBullets = st.playerBullets.filter(b=>!b.dead);
+
         collidePlayerBulletsToEnemies();
-      } else {
+      }
+
+      if (st.wave === 4) {
         const wave4Elapsed = Math.max(0, st.elapsed - tW3);
-        if ((!st.boss || !st.boss.alive) && !isAllDead()) {
+        if ((!st.boss || !st.boss.alive) && !isAllDead() && !st.bossKilled) {
           st._bossRespawnAcc += dt;
           if (st._bossRespawnAcc >= 3.0) { st._bossRespawnAcc = 0; spawnBoss(); }
         } else {
@@ -1335,11 +1641,29 @@
         moveEnemyBullets(dt);
         collideEnemyBulletsToPlayers();
         collideBossToPlayers();
+
+        movePlayerBullets(dt);
+        st.playerBullets = st.playerBullets.filter(b=>!b.dead);
+
         collidePlayerBulletsToBoss();
       }
 
-      movePlayerBullets(dt);
-      st.playerBullets = st.playerBullets.filter(b=>!b.dead);
+      // wave1/2: ここで弾移動
+      if (st.wave === 1 || st.wave === 2) {
+        movePlayerBullets(dt);
+        st.playerBullets = st.playerBullets.filter(b=>!b.dead);
+      }
+
+      // wave1/2: wave3以外は吸収しない
+      if (st.wave !== 3) {
+        st.absorbers = [];
+      }
+
+      // ★ボス以外：全滅してて時間残ってるなら復活
+      if (isWaveClearedForRespawn()) {
+        respawnNonBossForWave(st.wave);
+      }
+
       cleanupOutOfBounds();
     }
 
@@ -1357,11 +1681,13 @@
         tick: st.tick,
         mode: st.mode,
         wave: st.wave,
-        waveDelayLeft: st.waveDelayLeft, // ★追加：クライアントに表示用
+        waveDelayLeft: st.waveDelayLeft,
+        bossKilled: st.bossKilled,
         elapsed: Math.floor(st.elapsed*1000)/1000,
         players: playersArr,
         enemies: st.enemies.filter(e=>e.alive).map(e=>({ id:e.id, x:e.x,y:e.y,type:e.type })),
         hazards: st.hazards.filter(h=>h.alive).map(h=>({ id:h.id, x:h.x,y:h.y,type:h.type })),
+        absorbers: st.absorbers.filter(a=>a.alive).map(a=>({ id:a.id, x:a.x,y:a.y,t:a.t??0 })),
         playerBullets: st.playerBullets.filter(b=>!b.dead).map(b=>({ id:b.id, x:b.x,y:b.y,ownerUid:b.ownerUid })),
         enemyBullets: st.enemyBullets.filter(b=>!b.dead).map(b=>({ id:b.id, x:b.x,y:b.y,type:b.type })),
         boss,
@@ -1435,7 +1761,7 @@
     subscribeRoom(roomId);
   }
 
-  async function createRoom(mode) {
+  async function createRoom() {
     const roomsCount = await countRooms();
     if (roomsCount >= MAX_ROOMS) {
       ui.createHint.textContent = "部屋数が上限（5）です。誰かが部屋を削除してから作成してください。";
@@ -1489,7 +1815,6 @@
       }
 
       for (const r of entries) {
-        // ソロ以外は表示しない（旧データが残ってても無視）
         if (r.mode && r.mode !== "solo") continue;
 
         const div = document.createElement("div");
@@ -1545,9 +1870,8 @@
     });
   }
 
-  // ★2)対処：ホスト二重起動防止（起動ロック）
-  const activeHostLoops = new Map(); // roomId -> timer
-  const hostStartLocks = new Map();  // roomId -> boolean
+  const activeHostLoops = new Map();
+  const hostStartLocks = new Map();
 
   function subscribeRoom(roomId) {
     const roomRef = ref(db, PATHS.room(roomId));
@@ -1657,13 +1981,23 @@
         sim.applyInputs(inputs);
         sim.step(intervalMs / 1000);
 
+        // ★ボスを倒したら即クリア
+        const snapGame = sim.snapshot();
+        if (snapGame.bossKilled) {
+          await set(ref(db, PATHS.roomGame(roomId)), snapGame);
+          await update(ref(db, PATHS.room(roomId)), { state: "finished", finishedReason: "boss_killed", updatedAt: Date.now() });
+          await update(ref(db, PATHS.roomIndex(roomId)), { state: "finished" });
+          return;
+        }
+
         if (sim.isAllDead()) {
+          await set(ref(db, PATHS.roomGame(roomId)), snapGame);
           await update(ref(db, PATHS.room(roomId)), { state: "finished", finishedReason: "all_dead", updatedAt: Date.now() });
           await update(ref(db, PATHS.roomIndex(roomId)), { state: "finished" });
           return;
         }
 
-        await set(ref(db, PATHS.roomGame(roomId)), sim.snapshot());
+        await set(ref(db, PATHS.roomGame(roomId)), snapGame);
       }, intervalMs);
 
       activeHostLoops.set(roomId, timer);
@@ -1672,7 +2006,6 @@
     }
   }
 
-  // ---------------- Boot ----------------
   await signInAnonymously(auth);
 
   onAuthStateChanged(auth, async (user) => {
@@ -1706,8 +2039,8 @@
 
     ui.changeNameBtn.onclick = () => { setScreen("name"); ui.nameHint.textContent = "名前を変更して決定してください"; };
 
-    ui.createSoloBtn.onclick = async () => { if (!state.userName) return alert("名前を先に決定してください"); await createRoom("solo"); };
-    ui.createMultiBtn.onclick = async () => { /* マルチ削除 */ };
+    ui.createSoloBtn.onclick = async () => { if (!state.userName) return alert("名前を先に決定してください"); await createRoom(); };
+    ui.createMultiBtn.onclick = async () => { /* disabled */ };
 
     ui.leaveRoomBtn.onclick = async () => { await leaveRoom(true); };
 
@@ -1739,6 +2072,35 @@
       await update(ref(db, PATHS.roomIndex(state.roomId)), { state: "finished" });
     };
   });
+
+  async function createRoom() {
+    const roomsCount = await countRooms();
+    if (roomsCount >= MAX_ROOMS) {
+      ui.createHint.textContent = "部屋数が上限（5）です。誰かが部屋を削除してから作成してください。";
+      return;
+    }
+
+    const roomId = `room_${Date.now()}_${uuidShort()}`;
+    const now = Date.now();
+    const room = {
+      roomId,
+      state: "preparing",
+      mode: "solo",
+      hostUid: state.userId,
+      hostName: state.userName,
+      p1Uid: state.userId,
+      p2Uid: null,
+      ready: { [state.userId]: false },
+      createdAt: now,
+      updatedAt: now,
+      startedAt: 0
+    };
+
+    await set(ref(db, PATHS.room(roomId)), room);
+    await set(ref(db, PATHS.roomIndex(roomId)), { roomId, state: room.state, mode: room.mode, hostName: state.userName, createdAt: now, startedAt: 0 });
+
+    await enterRoom(roomId);
+  }
 </script>
 </body>
 </html>

@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Invader Rooms (RTDB) - Smooth FIX (stable start + stable ids)</title>
+  <title>Invader Rooms (RTDB) - Smooth FIX (no duplicate declarations)</title>
   <style>
     :root { color-scheme: dark; }
     html, body { height: 100%; margin: 0; background:#05070b; color:#e8eefc; font-family: system-ui, -apple-system, Segoe UI, Roboto, "Noto Sans JP", sans-serif; overflow:hidden; }
@@ -220,7 +220,7 @@
         <div class="card">
           <div class="row" style="justify-content:space-between;">
             <div style="font-weight:1000; font-size:18px;">部屋一覧</div>
-            <span class="tag">最大5</span>
+            <span class="tag">��大5</span>
           </div>
           <div class="muted" style="margin-top:6px;">
             同時プレイOK。プレイ中の部屋でも <b>観戦</b> できます。
@@ -388,19 +388,12 @@
   }
 
   function uuidShort() { return Math.random().toString(16).slice(2, 10); }
+  function escapeHtml(s) { return String(s).replace(/[&<>"']/g, (m) => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;" }[m])); }
 
-  function showAnn(title, body) {
-    ui.annTitle.textContent = title;
-    ui.annBody.textContent = body;
-    ui.ann.style.display = "flex";
-  }
+  function showAnn(title, body) { ui.annTitle.textContent = title; ui.annBody.textContent = body; ui.ann.style.display = "flex"; }
   function hideAnn(){ ui.ann.style.display = "none"; }
 
-  function showModal(title, body) {
-    ui.modalTitle.textContent = title;
-    ui.modalBody.textContent = body;
-    ui.modal.style.display = "flex";
-  }
+  function showModal(title, body) { ui.modalTitle.textContent = title; ui.modalBody.textContent = body; ui.modal.style.display = "flex"; }
   function hideModal(){ ui.modal.style.display = "none"; }
   function modalAsk(title, body) {
     return new Promise((resolve) => {
@@ -415,10 +408,6 @@
       ui.modalYes.addEventListener("click", yes);
       ui.modalNo.addEventListener("click", no);
     });
-  }
-
-  function escapeHtml(s) {
-    return String(s).replace(/[&<>"']/g, (m) => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;" }[m]));
   }
 
   // ---------------- Admin mode (local) ----------------
@@ -466,10 +455,7 @@
     onValue(ref(db, PATHS.leaderboardTop), (snap) => {
       const data = snap.val() || [];
       ui.leaderboard.innerHTML = "";
-      if (!Array.isArray(data) || data.length === 0) {
-        ui.leaderboard.textContent = "まだ記録がありません";
-        return;
-      }
+      if (!Array.isArray(data) || data.length === 0) { ui.leaderboard.textContent = "まだ記録がありません"; return; }
       const ol = document.createElement("ol");
       ol.style.margin = "0 0 0 18px";
       for (const row of data) {
@@ -496,9 +482,7 @@
 
   // ---------------- Canvas sizing ----------------
   const ctx = ui.canvas.getContext("2d");
-  let stageW = 0;
-  let stageH = 0;
-  let dpr = 1;
+  let stageW = 0, stageH = 0, dpr = 1;
 
   function syncStageSizeCache() {
     const rect = ui.stage.getBoundingClientRect();
@@ -526,9 +510,7 @@
   window.addEventListener("resize", resizeCanvasToStage);
   resizeCanvasToStage();
 
-  function toScreen(xNorm, yNorm) {
-    return { x: xNorm * stageW, y: yNorm * stageH };
-  }
+  function toScreen(xNorm, yNorm) { return { x: xNorm * stageW, y: yNorm * stageH }; }
 
   const SIZE = {
     playerW: 24 * 1.5,
@@ -548,11 +530,7 @@
     stars.length = 0;
     const n = 140;
     for (let i=0;i<n;i++) {
-      stars.push({
-        x: (Math.random()*0.98+0.01),
-        y: (Math.random()*0.98+0.01),
-        a: Math.random()*0.35+0.05
-      });
+      stars.push({ x: (Math.random()*0.98+0.01), y: (Math.random()*0.98+0.01), a: Math.random()*0.35+0.05 });
     }
   }
   rebuildStars();
@@ -616,7 +594,7 @@
     ctx.fillText(`BOSS HP ${boss.hp}/${boss.hpMax}  PHASE:${boss.phase}${shield}`, x + 6, y + 11);
   }
 
-  // ---------------- Smooth motion (id-based, fallback-safe) ----------------
+  // ---------------- Smooth motion ----------------
   let latestSnap = null;
   let renderState = null;
   const EMA_ALPHA = 0.18;
@@ -624,20 +602,14 @@
   function lerp(a,b,t){ return a + (b-a)*t; }
 
   function smoothListByIdSafe(key, alpha) {
-    const nextArr = (latestSnap && latestSnap[key]) ? latestSnap[key] : [];
-    if (!Array.isArray(nextArr)) {
-      renderState[key] = [];
-      return;
-    }
-
-    // if elements have no id, do hard replace (no smoothing) to avoid breaking
+    const nextArr = (latestSnap && Array.isArray(latestSnap[key])) ? latestSnap[key] : [];
     const allHaveId = nextArr.every(o => o && typeof o.id === "string");
     if (!allHaveId) {
       renderState[key] = nextArr.map(o => ({ ...o }));
       return;
     }
 
-    const prevArr = (renderState && renderState[key]) ? renderState[key] : [];
+    const prevArr = (renderState && Array.isArray(renderState[key])) ? renderState[key] : [];
     const prevMap = new Map(prevArr.map(o => [o.id, o]));
     const out = [];
 
@@ -651,10 +623,7 @@
 
   function smoothToward(alpha) {
     if (!latestSnap) return;
-    if (!renderState) {
-      renderState = JSON.parse(JSON.stringify(latestSnap));
-      return;
-    }
+    if (!renderState) { renderState = JSON.parse(JSON.stringify(latestSnap)); return; }
 
     renderState.wave = latestSnap.wave;
     renderState.elapsed = latestSnap.elapsed;
@@ -690,13 +659,15 @@
     smoothListByIdSafe("enemyBullets", alpha);
   }
 
-  function drawState(g, myUid) {
-    // clear internal buffer fully
+  function clearFull() {
     ctx.save();
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.clearRect(0, 0, ui.canvas.width, ui.canvas.height);
     ctx.restore();
+  }
 
+  function drawState(g, myUid) {
+    clearFull();
     ui.hud.style.display = "";
     drawBackgroundForWave(g.wave || 1);
 
@@ -781,11 +752,7 @@
   }
 
   function drawIdle(text) {
-    ctx.save();
-    ctx.setTransform(1, 0, 0, 1, 0, 0);
-    ctx.clearRect(0, 0, ui.canvas.width, ui.canvas.height);
-    ctx.restore();
-
+    clearFull();
     drawBackgroundForWave(1);
     ctx.fillStyle = "#9fb0cc";
     ctx.font = "16px system-ui";
@@ -800,7 +767,6 @@
           smoothToward(EMA_ALPHA);
           drawState(renderState || latestSnap, state.userId);
         } catch (e) {
-          // 描画例外でゲーム全体が止まるのを防ぐ
           console.error("render error", e);
           renderState = null;
         }
@@ -1272,9 +1238,7 @@
       }
     }
 
-    function isAllDead() {
-      return Object.values(st.players).every(p=>!p.alive);
-    }
+    function isAllDead() { return Object.values(st.players).every(p=>!p.alive); }
 
     function step(dt) {
       st.tick++;
@@ -1344,16 +1308,14 @@
     }
 
     function snapshot() {
-      const playersArr = Object.values(st.players).map(p=>({
-        uid:p.uid, x:p.x, y:p.y, alive:p.alive, score:p.score, color:p.color
-      }));
-      const boss = st.boss ? {
+      const playersArr = Object.values(st.players).map(p=>({ uid:p.uid, x:p.x, y:p.y, alive:p.alive, score:p.score, color:p.color }));
+      const boss = st.boss ? ({
         id: st.boss.id,
         x:st.boss.x, y:st.boss.y, alive:st.boss.alive,
         hp:st.boss.hp, hpMax:st.boss.hpMax,
         shieldLeft:st.boss.shieldLeft,
         phase: bossPhase(st.boss),
-      } : null;
+      }) : null;
 
       return {
         tick: st.tick,
@@ -1393,25 +1355,7 @@
     return Object.keys(v).length;
   }
 
-  function stateDotClass(st) {
-    if (st === "playing") return "playing";
-    if (st === "preparing") return "preparing";
-    if (st === "recruiting") return "recruiting";
-    if (st === "finished") return "finished";
-    return "";
-  }
-
-  function roomStateLabel(st) {
-    if (st === "recruiting") return "募集中";
-    if (st === "preparing") return "準備中";
-    if (st === "playing") return "プレイ中";
-    if (st === "finished") return "終了";
-    return "待機";
-  }
-
-  function isPlayer(room) {
-    return room?.p1Uid === state.userId || room?.p2Uid === state.userId;
-  }
+  function isPlayer(room) { return room?.p1Uid === state.userId || room?.p2Uid === state.userId; }
 
   async function deleteRoom(roomId) {
     await remove(ref(db, PATHS.room(roomId)));
@@ -1479,6 +1423,21 @@
     await set(ref(db, PATHS.roomIndex(roomId)), { roomId, state: room.state, mode, hostName: state.userName, createdAt: now, startedAt: 0 });
 
     await enterRoom(roomId);
+  }
+
+  function stateDotClass(st) {
+    if (st === "playing") return "playing";
+    if (st === "preparing") return "preparing";
+    if (st === "recruiting") return "recruiting";
+    if (st === "finished") return "finished";
+    return "";
+  }
+  function roomStateLabel(st) {
+    if (st === "recruiting") return "募集中";
+    if (st === "preparing") return "準備中";
+    if (st === "playing") return "プレイ中";
+    if (st === "finished") return "終了";
+    return "待機";
   }
 
   function bindRoomsList() {
@@ -1553,7 +1512,6 @@
     });
   }
 
-  // ---------------- Subscribe room + host loop ----------------
   const activeHostLoops = new Map(); // roomId -> timer
 
   function subscribeRoom(roomId) {
@@ -1607,7 +1565,11 @@
         }
       }
 
-      await maybeRoomAutoCleanup(roomId, room);
+      // auto cleanup
+      const hostOn = await isOnline(room.hostUid);
+      const p1On = await isOnline(room.p1Uid);
+      const p2On = room.p2Uid ? await isOnline(room.p2Uid) : false;
+      if (!(hostOn || p1On || p2On)) await deleteRoom(roomId);
 
       if (room.state === "playing" && room.startedAt) {
         if ((Date.now() - room.startedAt) >= ROOM_MAX_PLAY_MS) {
@@ -1636,14 +1598,6 @@
     });
   }
 
-  async function maybeRoomAutoCleanup(roomId, room) {
-    const hostOn = await isOnline(room.hostUid);
-    const p1On = await isOnline(room.p1Uid);
-    const p2On = room.p2Uid ? await isOnline(room.p2Uid) : false;
-    const anyOn = hostOn || p1On || p2On;
-    if (!anyOn) await deleteRoom(roomId);
-  }
-
   async function startHostLoopIfNeeded(roomId, room) {
     const isHost = room.hostUid === state.userId;
     const isPlaying = room.state === "playing";
@@ -1666,11 +1620,7 @@
 
     const timer = setInterval(async () => {
       const roomNow = (await get(ref(db, PATHS.room(roomId)))).val();
-      if (!roomNow) {
-        clearInterval(timer);
-        activeHostLoops.delete(roomId);
-        return;
-      }
+      if (!roomNow) { clearInterval(timer); activeHostLoops.delete(roomId); return; }
       if (roomNow.state !== "playing") return;
 
       if (roomNow.startedAt && (Date.now() - roomNow.startedAt) >= ROOM_MAX_PLAY_MS) {
@@ -1717,7 +1667,6 @@
     await bindPresence(state.userId);
     bindLeaderboard();
     bindRoomsList();
-
     startRenderLoop();
 
     state.userName = await getMyName(state.userId);
@@ -1738,25 +1687,13 @@
       setScreen("lobby");
     };
 
-    ui.changeNameBtn.onclick = () => {
-      setScreen("name");
-      ui.nameHint.textContent = "名前を変更して決定してください";
-    };
+    ui.changeNameBtn.onclick = () => { setScreen("name"); ui.nameHint.textContent = "名前を変更して決定してください"; };
 
-    ui.createSoloBtn.onclick = async () => {
-      if (!state.userName) { alert("名前を先に決定してください"); return; }
-      await createRoom("solo");
-    };
-    ui.createMultiBtn.onclick = async () => {
-      if (!state.userName) { alert("名前を先に決定してください"); return; }
-      await createRoom("multi");
-    };
+    ui.createSoloBtn.onclick = async () => { if (!state.userName) return alert("名前を先に決定してください"); await createRoom("solo"); };
+    ui.createMultiBtn.onclick = async () => { if (!state.userName) return alert("名前を先に決定してください"); await createRoom("multi"); };
 
-    ui.leaveRoomBtn.onclick = async () => {
-      await leaveRoom(true);
-    };
+    ui.leaveRoomBtn.onclick = async () => { await leaveRoom(true); };
 
-    // host will press this in preparing (solo/multi)
     ui.readyBtn.onclick = async () => {
       if (!state.roomId) return;
       await set(ref(db, PATHS.roomReady(state.roomId, state.userId)), true);
@@ -1786,82 +1723,6 @@
       await update(ref(db, PATHS.roomIndex(state.roomId)), { state: "finished" });
     };
   });
-
-  // helper: create room
-  async function createRoom(mode) {
-    const roomsCount = await countRooms();
-    if (roomsCount >= MAX_ROOMS) {
-      ui.createHint.textContent = "部屋数が上限（5）です。誰かが部屋を削除してから作成してください。";
-      return;
-    }
-
-    const roomId = `room_${Date.now()}_${uuidShort()}`;
-    const now = Date.now();
-    const room = {
-      roomId,
-      state: (mode === "multi") ? "recruiting" : "preparing",
-      mode,
-      hostUid: state.userId,
-      hostName: state.userName,
-      p1Uid: state.userId,
-      p2Uid: null,
-      recruiting: mode === "multi" ? { joinerUid: null } : null,
-      ready: { [state.userId]: false },
-      createdAt: now,
-      updatedAt: now,
-      startedAt: 0
-    };
-
-    await set(ref(db, PATHS.room(roomId)), room);
-    await set(ref(db, PATHS.roomIndex(roomId)), { roomId, state: room.state, mode, hostName: state.userName, createdAt: now, startedAt: 0 });
-
-    await enterRoom(roomId);
-  }
-
-  // helper: enter/leave/delete/count are already used above
-  async function countRooms() {
-    const snap = await get(ref(db, PATHS.roomsIndex));
-    const v = snap.val() || {};
-    return Object.keys(v).length;
-  }
-  async function enterRoom(roomId) {
-    await leaveRoom(false);
-
-    state.roomId = roomId;
-    ui.roomTag.style.display = "";
-    ui.roomTag.textContent = `room:${roomId.slice(-6)}`;
-    setScreen("game");
-
-    state.stopInput = bindInputSenderForRoom(state.userId, roomId, () => {
-      const room = state.lastRoom;
-      return room?.state === "playing" && isPlayer(room);
-    });
-
-    subscribeRoom(roomId);
-  }
-  async function leaveRoom(goLobby = true) {
-    if (state.stopInput) { state.stopInput(); state.stopInput = null; }
-    if (state.roomUnsub) { state.roomUnsub(); state.roomUnsub = null; }
-    if (state.gameUnsub) { state.gameUnsub(); state.gameUnsub = null; }
-
-    state.roomId = null;
-    ui.roomTag.style.display = "none";
-    ui.roomTag.textContent = "room:-";
-    ui.readyBtn.style.display = "none";
-    ui.retireBtn.style.display = "none";
-
-    latestSnap = null;
-    renderState = null;
-
-    if (goLobby) setScreen("lobby");
-  }
-  async function deleteRoom(roomId) {
-    await remove(ref(db, PATHS.room(roomId)));
-    await remove(ref(db, PATHS.roomIndex(roomId)));
-  }
-  function isPlayer(room) {
-    return room?.p1Uid === state.userId || room?.p2Uid === state.userId;
-  }
 </script>
 </body>
 </html>

@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Invader Rooms (RTDB) - Smooth FIX (clearRect, dpr transform, id smoothing, fixed EMA)</title>
+  <title>Invader Rooms (RTDB) - Smooth FIX (stable start + stable ids)</title>
   <style>
     :root { color-scheme: dark; }
     html, body { height: 100%; margin: 0; background:#05070b; color:#e8eefc; font-family: system-ui, -apple-system, Segoe UI, Roboto, "Noto Sans JP", sans-serif; overflow:hidden; }
@@ -494,9 +494,8 @@
   }
   loadBg(1); loadBg(2); loadBg(3); loadBg(4);
 
-  // ---------------- Canvas sizing (FIX 1 & 2) ----------------
+  // ---------------- Canvas sizing ----------------
   const ctx = ui.canvas.getContext("2d");
-
   let stageW = 0;
   let stageH = 0;
   let dpr = 1;
@@ -517,11 +516,8 @@
     if (ui.canvas.width !== bw) ui.canvas.width = bw;
     if (ui.canvas.height !== bh) ui.canvas.height = bh;
 
-    // ✅ transform: identity then scale (stable)
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.scale(dpr, dpr);
-
-    // optional: keep smoothing on for shapes
     ctx.imageSmoothingEnabled = true;
   }
 
@@ -620,29 +616,35 @@
     ctx.fillText(`BOSS HP ${boss.hp}/${boss.hpMax}  PHASE:${boss.phase}${shield}`, x + 6, y + 11);
   }
 
-  // ---------------- Smooth motion (FIX 3 & 4) ----------------
+  // ---------------- Smooth motion (id-based, fallback-safe) ----------------
   let latestSnap = null;
   let renderState = null;
+  const EMA_ALPHA = 0.18;
 
   function lerp(a,b,t){ return a + (b-a)*t; }
 
-  function smoothListById(key, alpha) {
-    const nextArr = latestSnap?.[key] || [];
-    const prevArr = renderState?.[key] || [];
+  function smoothListByIdSafe(key, alpha) {
+    const nextArr = (latestSnap && latestSnap[key]) ? latestSnap[key] : [];
+    if (!Array.isArray(nextArr)) {
+      renderState[key] = [];
+      return;
+    }
+
+    // if elements have no id, do hard replace (no smoothing) to avoid breaking
+    const allHaveId = nextArr.every(o => o && typeof o.id === "string");
+    if (!allHaveId) {
+      renderState[key] = nextArr.map(o => ({ ...o }));
+      return;
+    }
+
+    const prevArr = (renderState && renderState[key]) ? renderState[key] : [];
     const prevMap = new Map(prevArr.map(o => [o.id, o]));
     const out = [];
 
     for (const ne of nextArr) {
       const re = prevMap.get(ne.id);
-      if (!re) {
-        out.push({ ...ne });
-      } else {
-        out.push({
-          ...ne,
-          x: lerp(re.x, ne.x, alpha),
-          y: lerp(re.y, ne.y, alpha),
-        });
-      }
+      if (!re) out.push({ ...ne });
+      else out.push({ ...ne, x: lerp(re.x, ne.x, alpha), y: lerp(re.y, ne.y, alpha) });
     }
     renderState[key] = out;
   }
@@ -654,14 +656,12 @@
       return;
     }
 
-    // shallow fields
     renderState.wave = latestSnap.wave;
     renderState.elapsed = latestSnap.elapsed;
     renderState.mode = latestSnap.mode;
     renderState.tick = latestSnap.tick;
     renderState.sentAt = latestSnap.sentAt;
 
-    // players by uid
     const pMap = new Map((renderState.players||[]).map(p => [p.uid, p]));
     renderState.players = (latestSnap.players||[]).map(np => {
       const rp = pMap.get(np.uid) || { ...np };
@@ -671,7 +671,6 @@
       return rp;
     });
 
-    // boss
     if (latestSnap.boss) {
       if (!renderState.boss) renderState.boss = { ...latestSnap.boss };
       renderState.boss.alive = latestSnap.boss.alive;
@@ -685,17 +684,14 @@
       renderState.boss = null;
     }
 
-    // ✅ id-based smoothing (no index vibration)
-    smoothListById("enemies", alpha);
-    smoothListById("hazards", alpha);
-    smoothListById("playerBullets", alpha);
-    smoothListById("enemyBullets", alpha);
+    smoothListByIdSafe("enemies", alpha);
+    smoothListByIdSafe("hazards", alpha);
+    smoothListByIdSafe("playerBullets", alpha);
+    smoothListByIdSafe("enemyBullets", alpha);
   }
 
   function drawState(g, myUid) {
-    // ✅ FIX 1: clear using internal buffer size (physical px) but we are scaled.
-    // Because we scale(dpr), clearing in CSS units is okay IF we clear whole logical canvas area.
-    // The safest is to reset transform temporarily and clear by internal size.
+    // clear internal buffer fully
     ctx.save();
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.clearRect(0, 0, ui.canvas.width, ui.canvas.height);
@@ -797,21 +793,24 @@
     ui.hud.style.display = "none";
   }
 
-  // ✅ FIX 4: fixed EMA alpha (FPS independent, stable)
-  const EMA_ALPHA = 0.18;
-
   function startRenderLoop() {
     function frame() {
       if (latestSnap && state.userId) {
-        smoothToward(EMA_ALPHA);
-        drawState(renderState || latestSnap, state.userId);
+        try {
+          smoothToward(EMA_ALPHA);
+          drawState(renderState || latestSnap, state.userId);
+        } catch (e) {
+          // 描画例外でゲーム全体が止まるのを防ぐ
+          console.error("render error", e);
+          renderState = null;
+        }
       }
       requestAnimationFrame(frame);
     }
     requestAnimationFrame(frame);
   }
 
-  // ---------------- Rapid fire (cooldown removed but safe) ----------------
+  // ---------------- Rapid fire ----------------
   const FIRE_RATE = 10; // shots/sec
 
   // ---------------- Input sender ----------------
@@ -849,7 +848,7 @@
     };
   }
 
-  // ---------------- Game simulation (add stable ids) ----------------
+  // ---------------- Game simulation (host) ----------------
   const WAVE_DUR = [30, 40, 90, 140];
   const SCORE = { A: 60, B: 120, C: 200, D: 0, E: 300, BOSS_HIT: 10, BOSS_KILL: 5000 };
   const ENEMY = {
@@ -868,6 +867,7 @@
     shieldDuration: 1.8,
     moveSpeed: 0.18
   };
+  const clamp = (v,a,b)=>Math.max(a,Math.min(b,v));
   const normalizeAngle=(a)=>{while(a>Math.PI)a-=Math.PI*2;while(a<-Math.PI)a+=Math.PI*2;return a;};
   const mulberry32=(a)=>()=>{let t=a+=0x6D2B79F5;t=Math.imul(t^(t>>>15),t|1);t^=t+Math.imul(t^(t>>>7),t|61);return((t^(t>>>14))>>>0)/4294967296;};
   const randChoice=(rng,arr)=>arr[Math.floor(rng()*arr.length)];
@@ -916,16 +916,7 @@
       const rows=3, cols=6, x0=0.18, y0=0.14, dx=0.11, dy=0.085;
       for (let r=0;r<rows;r++) for (let c=0;c<cols;c++) {
         const type = randChoice(st.rng, types);
-        st.enemies.push({
-          id:`en_${st.nextEnemyId++}`,
-          type,
-          baseX:x0+c*dx,
-          baseY:y0+r*dy,
-          x:x0+c*dx,
-          y:y0+r*dy,
-          alive:true,
-          fireAcc:0
-        });
+        st.enemies.push({ id:`en_${st.nextEnemyId++}`, type, baseX:x0+c*dx, baseY:y0+r*dy, x:x0+c*dx, y:y0+r*dy, alive:true, fireAcc:0 });
       }
     }
 
@@ -1467,7 +1458,7 @@
       return;
     }
 
-    const roomId = `room_${Date.now()}_${Math.random().toString(16).slice(2,10)}`;
+    const roomId = `room_${Date.now()}_${uuidShort()}`;
     const now = Date.now();
     const room = {
       roomId,
@@ -1765,6 +1756,7 @@
       await leaveRoom(true);
     };
 
+    // host will press this in preparing (solo/multi)
     ui.readyBtn.onclick = async () => {
       if (!state.roomId) return;
       await set(ref(db, PATHS.roomReady(state.roomId, state.userId)), true);
@@ -1794,6 +1786,82 @@
       await update(ref(db, PATHS.roomIndex(state.roomId)), { state: "finished" });
     };
   });
+
+  // helper: create room
+  async function createRoom(mode) {
+    const roomsCount = await countRooms();
+    if (roomsCount >= MAX_ROOMS) {
+      ui.createHint.textContent = "部屋数が上限（5）です。誰かが部屋を削除してから作成してください。";
+      return;
+    }
+
+    const roomId = `room_${Date.now()}_${uuidShort()}`;
+    const now = Date.now();
+    const room = {
+      roomId,
+      state: (mode === "multi") ? "recruiting" : "preparing",
+      mode,
+      hostUid: state.userId,
+      hostName: state.userName,
+      p1Uid: state.userId,
+      p2Uid: null,
+      recruiting: mode === "multi" ? { joinerUid: null } : null,
+      ready: { [state.userId]: false },
+      createdAt: now,
+      updatedAt: now,
+      startedAt: 0
+    };
+
+    await set(ref(db, PATHS.room(roomId)), room);
+    await set(ref(db, PATHS.roomIndex(roomId)), { roomId, state: room.state, mode, hostName: state.userName, createdAt: now, startedAt: 0 });
+
+    await enterRoom(roomId);
+  }
+
+  // helper: enter/leave/delete/count are already used above
+  async function countRooms() {
+    const snap = await get(ref(db, PATHS.roomsIndex));
+    const v = snap.val() || {};
+    return Object.keys(v).length;
+  }
+  async function enterRoom(roomId) {
+    await leaveRoom(false);
+
+    state.roomId = roomId;
+    ui.roomTag.style.display = "";
+    ui.roomTag.textContent = `room:${roomId.slice(-6)}`;
+    setScreen("game");
+
+    state.stopInput = bindInputSenderForRoom(state.userId, roomId, () => {
+      const room = state.lastRoom;
+      return room?.state === "playing" && isPlayer(room);
+    });
+
+    subscribeRoom(roomId);
+  }
+  async function leaveRoom(goLobby = true) {
+    if (state.stopInput) { state.stopInput(); state.stopInput = null; }
+    if (state.roomUnsub) { state.roomUnsub(); state.roomUnsub = null; }
+    if (state.gameUnsub) { state.gameUnsub(); state.gameUnsub = null; }
+
+    state.roomId = null;
+    ui.roomTag.style.display = "none";
+    ui.roomTag.textContent = "room:-";
+    ui.readyBtn.style.display = "none";
+    ui.retireBtn.style.display = "none";
+
+    latestSnap = null;
+    renderState = null;
+
+    if (goLobby) setScreen("lobby");
+  }
+  async function deleteRoom(roomId) {
+    await remove(ref(db, PATHS.room(roomId)));
+    await remove(ref(db, PATHS.roomIndex(roomId)));
+  }
+  function isPlayer(room) {
+    return room?.p1Uid === state.userId || room?.p2Uid === state.userId;
+  }
 </script>
 </body>
 </html>

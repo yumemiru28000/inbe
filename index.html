@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Invader Rooms (RTDB) - Rapid Fire + Smooth Motion (fixed latestSnap)</title>
+  <title>Invader Rooms (RTDB) - Rapid Fire + Player-only Smooth</title>
   <style>
     :root { color-scheme: dark; }
     html, body { height: 100%; margin: 0; background:#05070b; color:#e8eefc; font-family: system-ui, -apple-system, Segoe UI, Roboto, "Noto Sans JP", sans-serif; overflow:hidden; }
@@ -515,15 +515,23 @@
     const { w, h } = stageSize();
     return { x: xNorm * w, y: yNorm * h };
   }
+
+  // pixel snap to reduce shimmer
+  function snapPx(v) { return Math.round(v * 2) / 2; } // 0.5px step
+  function toScreenSnapped(xNorm, yNorm) {
+    const s = toScreen(xNorm, yNorm);
+    return { x: snapPx(s.x), y: snapPx(s.y) };
+  }
+
   const SIZE = {
     playerW: 24 * 1.5,
     playerH: 14 * 1.5,
     enemyS: 16 * 1.5,
     bossW: 52 * 1.5,
     bossH: 28 * 1.5,
-    bulletW: 4 * 1.5,
-    bulletH: 16 * 1.5,
-    eBulletS: 6 * 1.5,
+    bulletW: 6 * 1.5,     // 見やすく太く
+    bulletH: 18 * 1.5,
+    eBulletS: 7 * 1.5,
     hazardR: 10 * 1.5,
   };
 
@@ -590,50 +598,45 @@
     ctx.fillText(`BOSS HP ${boss.hp}/${boss.hpMax}  PHASE:${boss.phase}${shield}`, x + 6, y + 11);
   }
 
-  // interpolation buffers + latest snapshot (FIX: define latestSnap)
-  let latestSnap = null;
+  // --- Player-only smoothing buffers ---
   let snapA = null;
   let snapB = null;
-  function lerp(a,b,t){ return a + (b-a)*t; }
-  function clamp01(v){ return Math.max(0, Math.min(1, v)); }
-  function interpArrayByIndex(aArr, bArr, t) {
-    const out = [];
-    const n = Math.min(aArr.length, bArr.length);
-    for (let i=0;i<n;i++) {
-      const a = aArr[i], b = bArr[i];
-      out.push({ ...b, x: lerp(a.x, b.x, t), y: lerp(a.y, b.y, t) });
-    }
-    for (let i=n;i<bArr.length;i++) out.push(bArr[i]);
-    return out;
-  }
-  function buildInterpolatedSnapshot(nowMs) {
-    if (!snapB) return snapA;
-    if (!snapA) return snapB;
+  let latestSnap = null;
+
+  const lerp = (a,b,t)=> a + (b-a)*t;
+  const clamp01 = (v)=> Math.max(0, Math.min(1, v));
+
+  function buildPlayerSmoothedSnapshot(nowMs) {
+    // base = latest (so enemies/bullets are always current, no index mismatch)
+    if (!latestSnap) return null;
+    if (!snapA || !snapB) return latestSnap;
 
     const t0 = snapA.sentAt || (nowMs - 100);
     const t1 = snapB.sentAt || nowMs;
     const denom = Math.max(1, (t1 - t0));
-    const renderTime = nowMs - 80;
+
+    // render slightly behind
+    const renderTime = nowMs - 70;
     const t = clamp01((renderTime - t0) / denom);
 
-    const a = snapA, b = snapB;
-    const out = { ...b };
+    // clone latest snap (not too heavy)
+    const out = { ...latestSnap };
 
-    const aPlayers = new Map((a.players||[]).map(p => [p.uid, p]));
-    out.players = (b.players||[]).map(p => {
-      const ap = aPlayers.get(p.uid);
-      if (!ap) return p;
-      return { ...p, x: lerp(ap.x, p.x, t), y: lerp(ap.y, p.y, t) };
+    // players: uid match
+    const aMap = new Map((snapA.players||[]).map(p=>[p.uid,p]));
+    const bMap = new Map((snapB.players||[]).map(p=>[p.uid,p]));
+
+    out.players = (latestSnap.players||[]).map(p => {
+      const ap = aMap.get(p.uid);
+      const bp = bMap.get(p.uid);
+      if (!ap || !bp) return p;
+      return { ...p, x: lerp(ap.x, bp.x, t), y: lerp(ap.y, bp.y, t) };
     });
 
-    if (a.boss && b.boss) {
-      out.boss = { ...b.boss, x: lerp(a.boss.x, b.boss.x, t), y: lerp(a.boss.y, b.boss.y, t) };
+    // boss optional (1体なので安全) ただし横ブレが気になるなら外せる
+    if (snapA.boss && snapB.boss && latestSnap.boss) {
+      out.boss = { ...latestSnap.boss, x: lerp(snapA.boss.x, snapB.boss.x, t), y: lerp(snapA.boss.y, snapB.boss.y, t) };
     }
-
-    out.enemies = interpArrayByIndex(a.enemies||[], b.enemies||[], t);
-    out.hazards = interpArrayByIndex(a.hazards||[], b.hazards||[], t);
-    out.playerBullets = interpArrayByIndex(a.playerBullets||[], b.playerBullets||[], t);
-    out.enemyBullets = interpArrayByIndex(a.enemyBullets||[], b.enemyBullets||[], t);
 
     return out;
   }
@@ -662,8 +665,9 @@
 
     drawBossBar(g.boss);
 
+    // enemies (NO smoothing => no ghosts)
     for (const e of (g.enemies || [])) {
-      const s = toScreen(e.x, e.y);
+      const s = toScreenSnapped(e.x, e.y);
       ctx.fillStyle =
         e.type === "A" ? "#ffd166" :
         e.type === "B" ? "#ff9f1c" :
@@ -672,16 +676,18 @@
       ctx.fillRect(s.x - SIZE.enemyS/2, s.y - SIZE.enemyS/2, SIZE.enemyS, SIZE.enemyS);
     }
 
+    // hazards (NO smoothing)
     for (const hz of (g.hazards || [])) {
-      const s = toScreen(hz.x, hz.y);
+      const s = toScreenSnapped(hz.x, hz.y);
       ctx.fillStyle = "#ff4d6d";
       ctx.beginPath();
       ctx.arc(s.x, s.y, SIZE.hazardR, 0, Math.PI * 2);
       ctx.fill();
     }
 
+    // boss body (smoothed, but single object)
     if (g.boss && g.boss.alive) {
-      const s = toScreen(g.boss.x, g.boss.y);
+      const s = toScreenSnapped(g.boss.x, g.boss.y);
       ctx.fillStyle = g.boss.shieldLeft > 0 ? "#7bdff2" : "#ff3b3b";
       ctx.fillRect(s.x - SIZE.bossW/2, s.y - SIZE.bossH/2, SIZE.bossW, SIZE.bossH);
       ctx.strokeStyle = "#ffffff";
@@ -690,8 +696,9 @@
       ctx.lineWidth = 1;
     }
 
+    // players (SMOOTHED + snapped)
     for (const p of (g.players || [])) {
-      const s = toScreen(p.x, p.y);
+      const s = toScreenSnapped(p.x, p.y);
       const col = p.color === "red" ? "#ff3b3b" : "#2b78ff";
       ctx.fillStyle = col;
       ctx.fillRect(s.x - SIZE.playerW/2, s.y - SIZE.playerH/2, SIZE.playerW, SIZE.playerH);
@@ -703,23 +710,33 @@
       }
     }
 
+    // player bullets (NO smoothing but make visible + glow-ish)
+    ctx.save();
+    ctx.shadowBlur = 12;
+    ctx.shadowColor = "rgba(255,255,255,.55)";
     ctx.fillStyle = "#e8eefc";
     for (const b of (g.playerBullets || [])) {
-      const s = toScreen(b.x, b.y);
+      const s = toScreenSnapped(b.x, b.y);
       ctx.fillRect(s.x - SIZE.bulletW/2, s.y - SIZE.bulletH/2, SIZE.bulletW, SIZE.bulletH);
     }
+    ctx.restore();
 
+    // enemy bullets (NO smoothing)
+    ctx.save();
+    ctx.shadowBlur = 10;
     for (const b of (g.enemyBullets || [])) {
-      const s = toScreen(b.x, b.y);
+      const s = toScreenSnapped(b.x, b.y);
       const col =
         b.type === "C_HOMING" ? "#7bdff2" :
         (b.type || "").includes("SNIPE") ? "#ffffff" :
         (b.type || "").includes("WAVE") ? "#b4f8c8" :
         (b.type || "").includes("SPLIT") ? "#ffd6ff" :
         "#ffccff";
+      ctx.shadowColor = col;
       ctx.fillStyle = col;
       ctx.fillRect(s.x - SIZE.eBulletS/2, s.y - SIZE.eBulletS/2, SIZE.eBulletS, SIZE.eBulletS);
     }
+    ctx.restore();
   }
 
   function drawIdle(text) {
@@ -733,18 +750,21 @@
     ui.hud.style.display = "none";
   }
 
-  // Smooth render loop
   function startRenderLoop() {
     function frame() {
-      const g = buildInterpolatedSnapshot(Date.now());
-      if (g && state.userId) drawState(g, state.userId);
+      if (state.userId) {
+        const g = buildPlayerSmoothedSnapshot(Date.now());
+        if (g) drawState(g, state.userId);
+      }
       requestAnimationFrame(frame);
     }
     requestAnimationFrame(frame);
   }
 
   // ---------------- Rapid fire tuning ----------------
-  const FIRE_RATE = 10; // shots per second (safe rapid fire)
+  // “クールタイム削除”だが、完全無制限は弾が爆増して重くなるので、現実的に高速(12/s)。
+  // もっと増やしたければ 20 などにしてOK（端末が重い場合は下げる）
+  const FIRE_RATE = 12;
 
   // ---------------- Input sender ----------------
   function bindInputSenderForRoom(userId, roomId, getIsPlayerFn) {
@@ -800,7 +820,7 @@
     shieldDuration: 1.8,
     moveSpeed: 0.18
   };
-  const clamp = (v,a,b)=>Math.max(a,Math.min(b,v));
+  const clampN = (v,a,b)=>Math.max(a,Math.min(b,v));
   const normalizeAngle=(a)=>{while(a>Math.PI)a-=Math.PI*2;while(a<-Math.PI)a+=Math.PI*2;return a;};
   const mulberry32=(a)=>()=>{let t=a+=0x6D2B79F5;t=Math.imul(t^(t>>>15),t|1);t^=t+Math.imul(t^(t>>>7),t|61);return((t^(t>>>14))>>>0)/4294967296;};
   const randChoice=(rng,arr)=>arr[Math.floor(rng()*arr.length)];
@@ -968,7 +988,7 @@
             const cur=Math.atan2(b.vy,b.vx);
             const diff=normalizeAngle(desired-cur);
             const maxTurn=2.2*dt;
-            const turned=cur+Math.max(-maxTurn, Math.min(maxTurn, diff));
+            const turned=cur+clampN(diff,-maxTurn,maxTurn);
             const spd=Math.hypot(b.vx,b.vy);
             b.vx=Math.cos(turned)*spd;
             b.vy=Math.sin(turned)*spd;
@@ -999,7 +1019,7 @@
             st.enemyBullets.push({ x:e.x,y:e.y, vx:Math.cos(ang)*spd, vy:Math.sin(ang)*spd, type:"C_HOMING", homingLeft:cfg.homingTime, dead:false });
           } else {
             const t=pickAlivePlayer();
-            const aim=t?Math.max(-0.25, Math.min(0.25, (t.x-e.x)*1.2)):0;
+            const aim=t?clampN((t.x-e.x)*1.2,-0.25,0.25):0;
             st.enemyBullets.push({ x:e.x,y:e.y, vx:aim, vy:cfg.bulletSpeed, type:`${e.type}_SHOT`, dead:false });
           }
         }
@@ -1154,7 +1174,7 @@
         if (boss.x>0.88){ boss.x=0.88; boss.dashDir=-1; }
       } else {
         boss.x += Math.sin(boss.time*0.9)*0.06*dt;
-        boss.x = clamp(boss.x,0.12,0.88);
+        boss.x = clampN(boss.x,0.12,0.88);
       }
 
       boss.shieldAcc += dt;
@@ -1228,7 +1248,7 @@
         const speed=0.45;
         if (inp.left) p.x -= speed*dt;
         if (inp.right) p.x += speed*dt;
-        p.x = clamp(p.x, 0.05, 0.95);
+        p.x = clampN(p.x, 0.05, 0.95);
 
         if (inp.shoot) {
           p.fireAcc += FIRE_RATE * dt;
@@ -1359,7 +1379,6 @@
     ui.readyBtn.style.display = "none";
     ui.retireBtn.style.display = "none";
 
-    // FIX: latestSnap defined above; also clear interpolation buffers
     latestSnap = null;
     snapA = null;
     snapB = null;
@@ -1564,6 +1583,7 @@
       const g = snap.val() || null;
       latestSnap = g;
 
+      // player smoothing buffer: keep last two snapshots only
       if (g) {
         if (!snapA) { snapA = g; snapB = g; }
         else { snapA = snapB; snapB = g; }

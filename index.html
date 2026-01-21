@@ -881,13 +881,13 @@ function stopBGM() {
   }
 
   // ---------------- Game simulation (host) ----------------
-  const WAVE_DUR = [20, 20, 30, 100];
+  const WAVE_DUR = [2, 2, 3, 100];
   const SCORE = { A: 60, B: 120, C: 200, D: 0, E: 300, BOSS_HIT: 10, BOSS_KILL: 5000 };
   const ENEMY = {
     A: { firePerSec: 0.36, bulletSpeed: 0.28, moveSpeed: 0.06 },
     B: { firePerSec: 0.54, bulletSpeed: 0.32, moveSpeed: 0.09 },
     C: { firePerSec: 0.42, bulletSpeed: 0.26, moveSpeed: 0.06, homingTime: 0.7, turnRate: 2.2 },
-    E: { firePerSec: 0.45, bulletSpeed: 0.36 },
+    E: { firePerSec: 1, bulletSpeed: 0.36 },
     D: { fallSpeed: 0.20 }
   };
 const BOSS = {

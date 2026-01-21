@@ -1769,7 +1769,7 @@ function step(dt) {
       hostStartLocks.delete(roomId);
     }
   }
-(async () => {
+
   // ---------------- Boot ----------------
   await signInAnonymously(auth);
 
@@ -1837,11 +1837,6 @@ function step(dt) {
       await update(ref(db, PATHS.roomIndex(state.roomId)), { state: "finished" });
     };
   });
-
-
-})();
-
-  
 </script>
 
   

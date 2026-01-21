@@ -881,7 +881,7 @@ function stopBGM() {
   }
 
   // ---------------- Game simulation (host) ----------------
-  const WAVE_DUR = [30, 40, 90, 140];
+  const WAVE_DUR = [30, 40, 40, 100];
   const SCORE = { A: 60, B: 120, C: 200, D: 0, E: 300, BOSS_HIT: 10, BOSS_KILL: 5000 };
   const ENEMY = {
     A: { firePerSec: 0.36, bulletSpeed: 0.28, moveSpeed: 0.06 },
@@ -894,7 +894,7 @@ function stopBGM() {
     hpMax: 2000,
     x: 0.5,
     y: 0.16,
-    baseBulletSpeed: 0.33,
+    baseBulletSpeed: 0.99,
     shieldEvery: 9.0,
     shieldDuration: 1.8,
     moveSpeed: 0.18

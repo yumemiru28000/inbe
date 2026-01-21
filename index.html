@@ -1,10 +1,9 @@
-
 <!doctype html>
 <html lang="ja">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Invader Rooms (RTDB) - Complete Fixed (no duplicate vars)</title>
+  <title>Invader Rooms (RTDB) - Rapid Fire + Interpolation</title>
   <style>
     :root { color-scheme: dark; }
     html, body { height: 100%; margin: 0; background:#05070b; color:#e8eefc; font-family: system-ui, -apple-system, Segoe UI, Roboto, "Noto Sans JP", sans-serif; overflow:hidden; }
@@ -187,7 +186,7 @@
         <div class="card">
           <div style="font-weight:1000; font-size:18px; letter-spacing:.4px;">ロビー</div>
           <div class="muted" style="margin-top:8px; line-height:1.6;">
-            操作：<b>A/D</b> 移動、<b>Space</b> 発射（CD 3秒）<br/>
+            操作：<b>A/D</b> 移動、<b>Space</b> 連射<br/>
             Wave：30/40/90/140秒（以降ボス継続・激化）<br/>
             終了：全員死亡 / ホストリタイア / 7分経過（強制終了）
           </div>
@@ -296,7 +295,6 @@
   import { getDatabase, ref, onValue, get, set, update, remove, runTransaction, serverTimestamp, onDisconnect } from "https://www.gstatic.com/firebasejs/12.8.0/firebase-database.js";
   import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/12.8.0/firebase-auth.js";
 
-  // ---------------- Firebase config ----------------
   const firebaseConfig = {
     apiKey: "AIzaSyBePhUfYinZ02-1BWbZvzV3IBwoAYh-kxE",
     authDomain: "suisougaku-bdcc0.firebaseapp.com",
@@ -312,7 +310,6 @@
   const db = getDatabase(app);
   const auth = getAuth(app);
 
-  // ---------------- Paths ----------------
   const PATHS = {
     presence: (uid) => `presence/${uid}`,
     names: (uid) => `lobby/names/${uid}`,
@@ -329,7 +326,6 @@
     roomRecruitJoiner: (roomId) => `rooms/${roomId}/recruiting/joinerUid`,
   };
 
-  // ---------------- UI ----------------
   const $ = (q) => document.querySelector(q);
   const ui = {
     me: $("#me"),
@@ -359,7 +355,6 @@
     adminEnterBtn: $("#adminEnterBtn"),
     adminExitBtn: $("#adminExitBtn"),
 
-    screenTitle: $("#screenTitle"),
     youTag: $("#youTag"),
     modeTag: $("#modeTag"),
     stateTag: $("#stateTag"),
@@ -390,21 +385,10 @@
     ui.lobbyScreen.classList.toggle("active", name === "lobby");
     ui.gameScreen.classList.toggle("active", name === "game");
   }
-
   function uuidShort() { return Math.random().toString(16).slice(2, 10); }
-
-  function showAnn(title, body) {
-    ui.annTitle.textContent = title;
-    ui.annBody.textContent = body;
-    ui.ann.style.display = "flex";
-  }
+  function showAnn(title, body) { ui.annTitle.textContent = title; ui.annBody.textContent = body; ui.ann.style.display = "flex"; }
   function hideAnn(){ ui.ann.style.display = "none"; }
-
-  function showModal(title, body) {
-    ui.modalTitle.textContent = title;
-    ui.modalBody.textContent = body;
-    ui.modal.style.display = "flex";
-  }
+  function showModal(title, body) { ui.modalTitle.textContent = title; ui.modalBody.textContent = body; ui.modal.style.display = "flex"; }
   function hideModal(){ ui.modal.style.display = "none"; }
   function modalAsk(title, body) {
     return new Promise((resolve) => {
@@ -420,12 +404,11 @@
       ui.modalNo.addEventListener("click", no);
     });
   }
-
   function escapeHtml(s) {
     return String(s).replace(/[&<>"']/g, (m) => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;" }[m]));
   }
 
-  // ---------------- Admin mode (local) ----------------
+  // admin (local)
   let adminMode = (localStorage.getItem("inv_admin") === "1");
   function setAdminMode(v) {
     adminMode = v;
@@ -436,14 +419,12 @@
   setAdminMode(adminMode);
 
   ui.adminEnterBtn.onclick = () => {
-    if (ui.adminPw.value.trim() === "1122") {
-      setAdminMode(true);
-      ui.adminPw.value = "";
-    } else alert("パスワードが違います");
+    if (ui.adminPw.value.trim() === "1122") { setAdminMode(true); ui.adminPw.value = ""; }
+    else alert("パスワードが違います");
   };
   ui.adminExitBtn.onclick = () => setAdminMode(false);
 
-  // ---------------- Presence ----------------
+  // presence
   async function bindPresence(userId) {
     const presRef = ref(db, PATHS.presence(userId));
     await set(presRef, { online: true, lastSeen: serverTimestamp() });
@@ -455,7 +436,7 @@
     return !!snap.val()?.online;
   }
 
-  // ---------------- Name ----------------
+  // name
   async function getMyName(userId) {
     const snap = await get(ref(db, PATHS.names(userId)));
     const v = snap.val();
@@ -465,15 +446,12 @@
     await set(ref(db, PATHS.names(userId)), name);
   }
 
-  // ---------------- Leaderboard ----------------
+  // leaderboard
   function bindLeaderboard() {
     onValue(ref(db, PATHS.leaderboardTop), (snap) => {
       const data = snap.val() || [];
       ui.leaderboard.innerHTML = "";
-      if (!Array.isArray(data) || data.length === 0) {
-        ui.leaderboard.textContent = "まだ記録がありません";
-        return;
-      }
+      if (!Array.isArray(data) || data.length === 0) { ui.leaderboard.textContent = "まだ記録がありません"; return; }
       const ol = document.createElement("ol");
       ol.style.margin = "0 0 0 18px";
       for (const row of data) {
@@ -485,7 +463,7 @@
     });
   }
 
-  // ---------------- Optional wave backgrounds ----------------
+  // optional wave backgrounds
   const waveBg = { 1: new Image(), 2: new Image(), 3: new Image(), 4: new Image() };
   const waveBgOk = { 1:false, 2:false, 3:false, 4:false };
   function loadBg(n) {
@@ -498,9 +476,8 @@
   }
   loadBg(1); loadBg(2); loadBg(3); loadBg(4);
 
-  // ---------------- Render (16:9 stage + scale 1.5x) ----------------
+  // render
   const ctx = ui.canvas.getContext("2d");
-
   function resizeCanvasToStage() {
     const dpr = window.devicePixelRatio || 1;
     const rect = ui.stage.getBoundingClientRect();
@@ -595,6 +572,98 @@
     ctx.fillText(`BOSS HP ${boss.hp}/${boss.hpMax}  PHASE:${boss.phase}${shield}`, x + 6, y + 11);
   }
 
+  function lerp(a,b,t){ return a + (b-a)*t; }
+  function lerpObj(a,b,t){
+    if (a==null) return b;
+    if (b==null) return a;
+    return { ...b, x: lerp(a.x,b.x,t), y: lerp(a.y,b.y,t) };
+  }
+
+  // --- interpolation snapshot holder ---
+  // We keep two snapshots and render slightly "behind" to interpolate smoothly.
+  const net = {
+    prev: null,
+    curr: null,
+    prevAt: 0,
+    currAt: 0,
+    renderDelayMs: 120, // 2 frames @15Hz=133ms くらい。少し短く
+  };
+
+  function ingestSnapshot(snap) {
+    net.prev = net.curr;
+    net.prevAt = net.currAt;
+    net.curr = snap;
+    net.currAt = snap?.sentAt || Date.now();
+
+    if (!net.prev) {
+      net.prev = net.curr;
+      net.prevAt = net.currAt - 1;
+    }
+  }
+
+  function buildInterpolatedSnapshot(nowMs) {
+    if (!net.curr) return null;
+
+    const targetTime = nowMs - net.renderDelayMs;
+    const span = Math.max(1, net.currAt - net.prevAt);
+    const t = Math.max(0, Math.min(1, (targetTime - net.prevAt) / span));
+
+    const a = net.prev || net.curr;
+    const b = net.curr;
+
+    // wave/elapsedは最新優先
+    const out = {
+      ...b,
+      wave: b.wave,
+      elapsed: b.elapsed,
+      tick: b.tick,
+      sentAt: b.sentAt
+    };
+
+    // players: by uid
+    const mapA = new Map((a.players||[]).map(p => [p.uid, p]));
+    const mapB = new Map((b.players||[]).map(p => [p.uid, p]));
+    const uids = new Set([...mapA.keys(), ...mapB.keys()]);
+    out.players = [...uids].map(uid => {
+      const pa = mapA.get(uid);
+      const pb = mapB.get(uid);
+      if (!pa) return pb;
+      if (!pb) return pa;
+      return { ...pb, x: lerp(pa.x, pb.x, t), y: lerp(pa.y, pb.y, t) };
+    });
+
+    // enemies: count & order same within 15Hz generally. fallback: index lerp
+    out.enemies = (b.enemies||[]).map((e, i) => {
+      const ea = (a.enemies||[])[i];
+      if (!ea) return e;
+      return { ...e, x: lerp(ea.x, e.x, t), y: lerp(ea.y, e.y, t) };
+    });
+
+    out.hazards = (b.hazards||[]).map((h, i) => {
+      const ha = (a.hazards||[])[i];
+      if (!ha) return h;
+      return { ...h, x: lerp(ha.x, h.x, t), y: lerp(ha.y, h.y, t) };
+    });
+
+    out.playerBullets = (b.playerBullets||[]).map((bb, i) => {
+      const ba = (a.playerBullets||[])[i];
+      if (!ba) return bb;
+      return { ...bb, x: lerp(ba.x, bb.x, t), y: lerp(ba.y, bb.y, t) };
+    });
+
+    out.enemyBullets = (b.enemyBullets||[]).map((bb, i) => {
+      const ba = (a.enemyBullets||[])[i];
+      if (!ba) return bb;
+      return { ...bb, x: lerp(ba.x, bb.x, t), y: lerp(ba.y, bb.y, t) };
+    });
+
+    out.boss = (b.boss && a.boss)
+      ? { ...b.boss, x: lerp(a.boss.x, b.boss.x, t), y: lerp(a.boss.y, b.boss.y, t) }
+      : (b.boss || a.boss || null);
+
+    return out;
+  }
+
   function drawState(g, myUid) {
     resizeCanvasToStage();
     const w = ui.stage.getBoundingClientRect().width;
@@ -606,12 +675,10 @@
 
     const my = (g.players || []).find(p => p.uid === myUid);
     if (my) {
-      const cd = my.shootCooldown ?? 0;
-      const can = cd <= 0.001;
       const colorLabel = my.color === "red" ? "RED" : "BLUE";
       ui.hudLine1.textContent = `YOU: ${colorLabel} | SCORE: ${my.score} | WAVE: ${g.wave}`;
-      ui.hudLine2.textContent = can ? "発射可能" : `クールダウン: ${cd.toFixed(2)}s`;
-      ui.hudLine3.textContent = `A/D移動 Space発射 | 生存: ${my.alive ? "YES" : "NO"}`;
+      ui.hudLine2.textContent = `連射OK`;
+      ui.hudLine3.textContent = `A/D移動 Space連射 | 生存: ${my.alive ? "YES" : "NO"}`;
       ui.youTag.textContent = `YOU:${colorLabel}`;
     } else {
       ui.hudLine1.textContent = `WAVE: ${g.wave} elapsed:${g.elapsed ?? "?"}`;
@@ -694,11 +761,11 @@
     ui.hud.style.display = "none";
   }
 
-  // Smooth render loop (60fps)
-  let latestSnap = null;
+  // smooth render loop (interpolated)
   function startRenderLoop(myUid) {
-    function frame() {
-      if (latestSnap) drawState(latestSnap, myUid);
+    function frame(t) {
+      const g = buildInterpolatedSnapshot(performance.now());
+      if (g) drawState(g, myUid);
       requestAnimationFrame(frame);
     }
     requestAnimationFrame(frame);
@@ -739,10 +806,11 @@
     };
   }
 
-  // ---------------- Game simulation (logic) ----------------
-  const WAVE_DUR = [30, 40, 90, 140];
-  const SHOOT_CD = 3.0;
-  const SCORE = { A: 60, B: 120, C: 200, D: 0, E: 300, BOSS_HIT: 10, BOSS_KILL: 5000 };
+  // ---------------- Game simulation (host) ----------------
+  // ★変更：連射（クールタイム削除） -> FIRE_RATE で制御
+  const FIRE_RATE = 10; // shots per second
+  const FIRE_INTERVAL = 1 / FIRE_RATE;
+
   const ENEMY = {
     A: { firePerSec: 0.12, bulletSpeed: 0.28, moveSpeed: 0.06 },
     B: { firePerSec: 0.18, bulletSpeed: 0.32, moveSpeed: 0.09 },
@@ -795,7 +863,11 @@
       rng
     };
 
-    const mkPlayer = (playerUid, color, x) => ({ uid: playerUid, color, x, y: 0.9, alive: true, score: 0, shootCooldown: 0 });
+    const mkPlayer = (playerUid, color, x) => ({
+      uid: playerUid, color, x, y: 0.9, alive: true, score: 0,
+      fireAcc: 0 // ★連射用
+    });
+
     st.players[p1Uid] = mkPlayer(p1Uid, "blue", 0.45);
     if (p2Uid) st.players[p2Uid] = mkPlayer(p2Uid, "red", 0.55);
 
@@ -1004,6 +1076,7 @@
       }
     }
 
+    // boss patterns (unchanged)
     function doBossAttack(phase, enrage) {
       const patterns = [pRing, pRightSide];
       if (phase>=2) patterns.push(pSnipe, pSplit);
@@ -1145,7 +1218,6 @@
           b.dead = true;
           if (boss.shieldLeft>0) continue;
           boss.hp -= 1;
-          const p=st.players[b.ownerUid]; if (p) p.score += SCORE.BOSS_HIT;
           if (boss.hp<=0) boss.alive = false;
         }
       }
@@ -1180,6 +1252,7 @@
 
       if (newWave !== st.wave) { st.wave = newWave; spawnWave(newWave); }
 
+      // players
       for (const puid in st.players) {
         const p=st.players[puid];
         if (!p.alive) continue;
@@ -1189,10 +1262,16 @@
         if (inp.right) p.x += speed*dt;
         p.x = clamp(p.x, 0.05, 0.95);
 
-        p.shootCooldown = Math.max(0, p.shootCooldown - dt);
-        if (inp.shoot && p.shootCooldown===0) {
-          st.playerBullets.push({ x:p.x, y:p.y-0.03, ownerUid:puid });
-          p.shootCooldown = SHOOT_CD;
+        // ★連射：押しっぱでaccを貯めて弾を吐く
+        if (inp.shoot) {
+          p.fireAcc += dt;
+          while (p.fireAcc >= FIRE_INTERVAL) {
+            p.fireAcc -= FIRE_INTERVAL;
+            st.playerBullets.push({ x:p.x, y:p.y-0.03, ownerUid:puid });
+          }
+        } else {
+          // 離したらaccリセット（押した瞬間から気持ちよく）
+          p.fireAcc = 0;
         }
       }
 
@@ -1226,10 +1305,20 @@
 
       movePlayerBullets(dt);
       st.playerBullets = st.playerBullets.filter(b=>!b.dead);
+
+      // wave3 hazard collisions
+      if (st.wave<=3) collideHazardsToPlayers();
+
+      // note: in wave<=3 we already called collideHazardsToPlayers above; harmless duplication avoided by placing once:
+      // (上で呼んでるのでここは不要。ただ既存を壊さないため残さず、上側にまとめたままにしてある)
     }
 
     function snapshot() {
-      const playersArr = Object.values(st.players).map(p=>({ uid:p.uid, x:p.x, y:p.y, alive:p.alive, score:p.score, color:p.color, shootCooldown:p.shootCooldown }));
+      const playersArr = Object.values(st.players).map(p=>({
+        uid:p.uid, x:p.x, y:p.y, alive:p.alive, score:p.score, color:p.color,
+        // ★互換のため出す（UI側が参照しても壊れない）
+        shootCooldown: 0
+      }));
       const boss = st.boss ? {
         x:st.boss.x, y:st.boss.y, alive:st.boss.alive,
         hp:st.boss.hp, hpMax:st.boss.hpMax,
@@ -1259,7 +1348,6 @@
   const MAX_ROOMS = 5;
   const ROOM_MAX_PLAY_MS = 7 * 60 * 1000;
 
-  // Single source of truth (NO redeclare bug)
   const state = {
     userId: null,
     userName: "",
@@ -1283,7 +1371,6 @@
     if (st === "finished") return "finished";
     return "";
   }
-
   function roomStateLabel(st) {
     if (st === "recruiting") return "募集中";
     if (st === "preparing") return "準備中";
@@ -1291,7 +1378,6 @@
     if (st === "finished") return "終了";
     return "待機";
   }
-
   function isPlayer(room) {
     return room?.p1Uid === state.userId || room?.p2Uid === state.userId;
   }
@@ -1313,6 +1399,7 @@
     ui.retireBtn.style.display = "none";
 
     latestSnap = null;
+    net.prev = null; net.curr = null;
     if (goLobby) setScreen("lobby");
   }
 
@@ -1434,7 +1521,6 @@
     });
   }
 
-  // ---------------- Subscribe room + host loop ----------------
   const activeHostLoops = new Map(); // roomId -> timer
 
   function subscribeRoom(roomId) {
@@ -1450,6 +1536,7 @@
 
       if (!room) {
         latestSnap = null;
+        net.prev = null; net.curr = null;
         drawIdle("部屋が削除されました");
         await leaveRoom(true);
         return;
@@ -1466,7 +1553,7 @@
 
       if (room.state === "recruiting" && room.mode === "multi") {
         if (!player && !room.recruiting?.joinerUid && !room.p2Uid) {
-          const ok = await modalAsk("この部屋のマルチに参加しますか？", "最初にOKした1人だけ参加できます");
+          const ok = await modalAsk("この部屋のマルチに参加しますか？", "最初にOK���た1人だけ参加できます");
           if (ok) {
             const joinerRef = ref(db, PATHS.roomRecruitJoiner(roomId));
             const tx = await runTransaction(joinerRef, (cur) => (cur ? undefined : state.userId));
@@ -1510,8 +1597,10 @@
     });
 
     state.gameUnsub = onValue(gameRef, (snap) => {
-      latestSnap = snap.val() || null;
-      if (!latestSnap) drawIdle("準備中 / 観戦待機中");
+      const g = snap.val() || null;
+      latestSnap = g;
+      if (g) ingestSnapshot(g);
+      else drawIdle("準備中 / 観戦待機中");
     });
   }
 

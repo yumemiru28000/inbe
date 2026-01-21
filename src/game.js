@@ -21,7 +21,6 @@ export function createRenderer(canvas, hud) {
 
   function drawIdle(text) {
     resize(); clear();
-    const w = canvas.getBoundingClientRect().width;
     ctx.fillStyle = "#9fb0cc";
     ctx.font = "16px system-ui";
     ctx.fillText(text, 16, 28);
@@ -32,7 +31,6 @@ export function createRenderer(canvas, hud) {
   function drawState(g, myUid) {
     resize(); clear();
 
-    // HUD表示
     if (hud) hud.style.display = "";
 
     const my = (g.players || []).find(p => p.uid === myUid);
@@ -50,11 +48,24 @@ export function createRenderer(canvas, hud) {
       hud2.textContent = "";
     }
 
-    // 敵
+    // 敵（タイプで色を変える）
     for (const e of (g.enemies || [])) {
       const s = toScreen(e.x, e.y);
-      ctx.fillStyle = "#ffd166";
+      ctx.fillStyle =
+        e.type === "A" ? "#ffd166" :
+        e.type === "B" ? "#ff9f1c" :
+        e.type === "C" ? "#7bdff2" :
+        e.type === "E" ? "#b8f2a6" : "#ffd166";
       ctx.fillRect(s.x - 8, s.y - 8, 16, 16);
+    }
+
+    // Dハザード（爆弾）
+    for (const h of (g.hazards || [])) {
+      const s = toScreen(h.x, h.y);
+      ctx.fillStyle = "#ff4d6d";
+      ctx.beginPath();
+      ctx.arc(s.x, s.y, 10, 0, Math.PI * 2);
+      ctx.fill();
     }
 
     // プレイヤー
@@ -64,7 +75,6 @@ export function createRenderer(canvas, hud) {
       ctx.fillStyle = col;
       ctx.fillRect(s.x - 12, s.y - 7, 24, 14);
 
-      // 自分マーク
       if (p.uid === myUid) {
         ctx.strokeStyle = "#ffffff";
         ctx.lineWidth = 2;
@@ -77,6 +87,13 @@ export function createRenderer(canvas, hud) {
     for (const b of (g.playerBullets || [])) {
       const s = toScreen(b.x, b.y);
       ctx.fillRect(s.x - 2, s.y - 8, 4, 16);
+    }
+
+    // 敵弾
+    for (const b of (g.enemyBullets || [])) {
+      const s = toScreen(b.x, b.y);
+      ctx.fillStyle = (b.type === "C_HOMING") ? "#7bdff2" : "#ffccff";
+      ctx.fillRect(s.x - 3, s.y - 3, 6, 6);
     }
   }
 

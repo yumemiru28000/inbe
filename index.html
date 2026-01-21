@@ -3,13 +3,13 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Inder Rooms (RTDB) - Single File Complete (fixed uid, fixed 決定)</title>
+  <title>Invader Rooms (RTDB) - Single File Complete (UI: full canvas, bigger sprites, wave backgrounds)</title>
   <style>
     :root { color-scheme: dark; }
-    html, body { height: 100%; margin: 0; background:#0b0e14; color:#e8eefc; font-family: system-ui, -apple-system, Segoe UI, Roboto, "Noto Sans JP", sans-serif; }
-
+    html, body { height: 100%; margin: 0; background:#0b0e14; color:#e8eefc; font-family: system-ui, -apple-system, Segoe UI, Roboto, "Noto Sans JP", sans-serif; overflow:hidden; }
     #app { display:grid; grid-template-rows:auto 1fr; height:100%; }
-    header { padding:10px 12px; display:flex; gap:12px; align-items:center; border-bottom:1px solid #1f2a3a; }
+
+    header { padding:10px 12px; display:flex; gap:12px; align-items:center; border-bottom:1px solid #1f2a3a; background:#0b0e14; }
     header b { font-weight: 900; letter-spacing:.2px; }
     small.mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; color:#a8b3c7; }
     .tag { padding:2px 8px; border-radius: 999px; border:1px solid #1f2a3a; background:#0b1220; color:#a8b3c7; font-size:12px; }
@@ -19,7 +19,7 @@
     button.secondary { background:#223047; }
     button.danger { background:#b42318; }
     button.ghost { background:transparent; border:1px solid #1f2a3a; color:#a8b3c7; }
-    button.small { padding:6px 10px; border-radius:10px; font-weight:700; font-size:12px; }
+    button.small { padding:7px 10px; border-radius:10px; font-weight:800; font-size:12px; }
     button[disabled] { opacity:.45; cursor:not-allowed; }
 
     input { width: 100%; box-sizing:border-box; padding:12px 12px; border-radius:12px; border:1px solid #26344a; background:#0b1220; color:#e8eefc; font-size:16px; }
@@ -27,76 +27,148 @@
     .row { display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
     .col { display:flex; flex-direction:column; gap:10px; }
 
-    .card { border:1px solid #1f2a3a; border-radius:16px; padding:14px; background:#0e1420; }
-    .card.thin { background: rgba(14,20,32,.45); border-color: rgba(31,42,58,.55); backdrop-filter: blur(6px); }
-
     /* screens */
     .screen { display:none; height:100%; }
     .screen.active { display:block; }
 
     /* name screen */
     #nameScreen .wrap { height:100%; display:flex; align-items:center; justify-content:center; padding:18px; }
-    #nameScreen .panel { width:min(520px, 92vw); }
+    #nameScreen .panel { width:min(520px, 92vw); background: rgba(14,20,32,.82); border:1px solid rgba(31,42,58,.75); border-radius:18px; padding:16px; }
     #nameScreen h1 { margin:0 0 6px 0; font-size: 26px; }
 
-    /* lobby */
-    #lobbyMain { height:100%; box-sizing:border-box; padding:14px; display:grid; grid-template-columns: 340px 1fr 320px; gap:14px; min-height:0; }
-    #leftCol, #midCol, #rightCol { min-height:0; }
-    #roomsList { overflow:auto; max-height: calc(100vh - 170px); }
+    /* lobby (game-like) */
+    #lobbyMain {
+      height:100%;
+      padding:0;
+      display:grid;
+      grid-template-columns: 1fr 360px;
+      gap:0;
+      min-height:0;
+      position:relative;
+    }
+    #lobbyLeft {
+      min-height:0;
+      padding:18px;
+      position:relative;
+    }
+    #lobbyLeft::before{
+      content:"";
+      position:absolute; inset:0;
+      background:
+        radial-gradient(circle at 20% 20%, rgba(255,255,255,.10), transparent 40%),
+        radial-gradient(circle at 80% 30%, rgba(255,255,255,.08), transparent 40%),
+        radial-gradient(circle at 40% 80%, rgba(255,255,255,.06), transparent 45%),
+        linear-gradient(#070a10, #0b0e14);
+      opacity:.85;
+      z-index:0;
+    }
+    #lobbyLeftInner { position:relative; z-index:1; max-width: 920px; }
+    #titleBig { font-weight: 1000; font-size: 30px; letter-spacing:.5px; margin-bottom:10px; }
+    #subBig { color:#a8b3c7; line-height:1.6; margin-bottom:12px; max-width: 820px; }
+    #actionsBar { display:flex; gap:10px; flex-wrap:wrap; margin-top:10px; }
+
+    #roomsArea { margin-top:16px; }
+    #roomsTitle { display:flex; justify-content:space-between; align-items:center; gap:10px; }
+    #roomsTitle h2 { margin:0; font-size:16px; letter-spacing:.5px; }
+    #roomsList {
+      margin-top:10px;
+      display:grid;
+      grid-template-columns: 1fr;
+      gap:10px;
+      max-height: calc(100vh - 260px);
+      overflow:auto;
+      padding-right: 8px;
+    }
     .roomRow {
-      display:grid; grid-template-columns: 1fr auto; gap:10px;
-      border:1px solid rgba(31,42,58,.7);
-      border-radius:14px;
-      padding:10px 10px;
-      background: rgba(11,18,32,.55);
-      margin-bottom:10px;
+      border:1px solid rgba(31,42,58,.8);
+      border-radius:16px;
+      padding:12px;
+      background: rgba(12,18,30,.70);
+      backdrop-filter: blur(6px);
+      display:grid;
+      grid-template-columns: 1fr auto;
+      gap:12px;
     }
     .roomTop { display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
-    .roomMeta { font-size:12px; color:#a8b3c7; margin-top:4px; }
+    .roomMeta { font-size:12px; color:#a8b3c7; margin-top:6px; }
     .roomBtns { display:flex; gap:8px; justify-content:flex-end; align-items:center; flex-wrap:wrap; }
 
-    /* game */
-    #gameWrap { height:100%; display:flex; flex-direction:column; }
+    #lobbyRight {
+      min-height:0;
+      padding:12px;
+      border-left: 1px solid rgba(31,42,58,.75);
+      background: rgba(10,14,22,.65);
+      backdrop-filter: blur(8px);
+      display:flex;
+      flex-direction:column;
+      gap:10px;
+    }
+    #lbCard { flex:1; min-height:0; overflow:auto; border:1px solid rgba(31,42,58,.75); border-radius:16px; padding:12px; background: rgba(14,20,32,.45); }
+    #lbCardHeader { display:flex; justify-content:space-between; align-items:center; gap:10px; }
+    #lbCardHeader b { letter-spacing:.4px; }
+    #adminMini { border:1px solid rgba(31,42,58,.75); border-radius:16px; padding:12px; background: rgba(14,20,32,.35); }
+    #adminMini input { padding:8px 10px; font-size:13px; }
+    #adminMini .row { justify-content:space-between; }
+
+    /* game screen: FULL CANVAS (no scroll) */
+    #gameScreen, #gameWrap { height:100%; }
+    #gameWrap { display:flex; flex-direction:column; min-height:0; }
     #gameTopBar {
-      padding:10px 12px; border-bottom:1px solid #1f2a3a;
-      display:flex; align-items:center; gap:10px;
+      padding:10px 12px;
+      border-bottom:1px solid #1f2a3a;
+      display:flex;
+      align-items:center;
+      gap:10px;
+      background:#0b0e14;
     }
     #gameTopBar .spacer { flex:1; }
     #canvasWrap { flex:1; min-height:0; position:relative; }
     canvas { width:100%; height:100%; display:block; background:#05070b; }
 
     #hud {
-      position:absolute; left:10px; top:10px;
+      position:absolute; left:12px; top:12px;
       background: rgba(10,14,22,.72);
-      border:1px solid #1f2a3a;
+      border:1px solid rgba(31,42,58,.9);
       padding:10px 12px;
       border-radius:16px;
       font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
       color:#e8eefc;
-      min-width: 300px;
+      min-width: 320px;
+      max-width: min(520px, 92vw);
     }
+
     #ann { position:absolute; inset:0; display:none; align-items:center; justify-content:center; background: rgba(0,0,0,.60); }
-    #ann .card { width:min(560px, 92vw); }
+    #ann .panel { width:min(560px, 92vw); border:1px solid rgba(31,42,58,.9); border-radius:18px; padding:16px; background: rgba(14,20,32,.85); }
 
     /* modal */
     #modal { position:fixed; inset:0; display:none; align-items:center; justify-content:center; background: rgba(0,0,0,.60); z-index: 50; }
-    #modal .card { width:min(560px, 92vw); }
+    #modal .panel { width:min(560px, 92vw); border:1px solid rgba(31,42,58,.9); border-radius:18px; padding:16px; background: rgba(14,20,32,.88); }
     #modal .row { justify-content:flex-end; }
 
-    /* subtle star bg (lobby) */
-    #stars {
-      position: fixed; inset: 0; z-index: -1;
+    /* Wave background (optional images) */
+    #waveBg {
+      position:absolute; inset:0;
       background:
-        radial-gradient(circle at 10% 20%, rgba(255,255,255,.10), transparent 40%),
-        radial-gradient(circle at 70% 30%, rgba(255,255,255,.08), transparent 40%),
-        radial-gradient(circle at 40% 80%, rgba(255,255,255,.06), transparent 40%),
-        linear-gradient(#070a10, #0b0e14);
-      filter: saturate(1.1);
+        radial-gradient(circle at 20% 20%, rgba(255,255,255,.06), transparent 45%),
+        linear-gradient(#03050a, #05070b);
+      background-size: cover;
+      background-position: center;
+      opacity: .38;
+      pointer-events:none;
+      z-index: 0;
+      transition: opacity .25s ease, filter .25s ease;
+      filter: saturate(1.05) contrast(1.05);
     }
+    #waveBg.dim { opacity: .22; }
+    #canvasFg { position:relative; z-index:1; }
+
+    /* improve list scrollbars */
+    #roomsList::-webkit-scrollbar { width: 10px; }
+    #roomsList::-webkit-scrollbar-thumb { background: rgba(168,179,199,.25); border-radius: 999px; }
+    #roomsList::-webkit-scrollbar-track { background: rgba(0,0,0,.0); }
   </style>
 </head>
 <body>
-<div id="stars"></div>
 <div id="app">
   <header>
     <b>Invader Rooms</b>
@@ -109,7 +181,7 @@
   <!-- Name screen -->
   <section id="nameScreen" class="screen active">
     <div class="wrap">
-      <div class="panel card">
+      <div class="panel">
         <h1>名前を入力</h1>
         <p class="muted" style="margin:0 0 12px 0;">最初に1回だけ必要です（後で変更可）。</p>
         <input id="nameInput" placeholder="表示名（20文字まで）" maxlength="20" />
@@ -124,65 +196,67 @@
   <!-- Lobby screen -->
   <section id="lobbyScreen" class="screen">
     <div id="lobbyMain">
-      <!-- left -->
-      <div id="leftCol" class="col">
-        <div class="card">
-          <div style="font-weight:900; font-size:18px;">ロビー</div>
-          <div class="muted" style="margin-top:8px; line-height:1.5;">
+      <div id="lobbyLeft">
+        <div id="lobbyLeftInner">
+          <div id="titleBig">LOBBY</div>
+          <div id="subBig">
             操作：<b>A/D</b> 移動、<b>Space</b> 発射（CD 3秒）<br/>
             Wave：30/40/90/140秒（以降ボス継続・激化）<br/>
             終了：全員死亡 / ホストリタイア / 7分経過（強制終了）
           </div>
-          <div class="row" style="margin-top:12px;">
-            <button id="createSoloBtn">ソロ部屋を作る</button>
-            <button id="createMultiBtn">マルチ部屋を作る</button>
-          </div>
-          <div class="muted" id="createHint" style="margin-top:10px;"></div>
 
-          <div class="row" style="margin-top:14px; justify-content:space-between;">
-            <button id="changeNameBtn" class="ghost">名前を変更</button>
-            <span class="muted" id="myNameLabel"></span>
+          <div class="row" style="justify-content:space-between; align-items:flex-end; gap:12px;">
+            <div class="col" style="gap:6px;">
+              <div class="muted">あなたの名前</div>
+              <div style="font-weight:900; font-size:18px;" id="myNameLabel"></div>
+              <button id="changeNameBtn" class="ghost" style="width:max-content;">名前を変更</button>
+            </div>
+            <div class="col" style="gap:10px; align-items:flex-end;">
+              <div class="muted">プレイ</div>
+              <div id="actionsBar">
+                <button id="createSoloBtn">ソロ部屋を作る</button>
+                <button id="createMultiBtn">マルチ部屋を作る</button>
+              </div>
+              <div class="muted" id="createHint"></div>
+            </div>
           </div>
-        </div>
 
-        <div class="card thin">
-          <div class="row" style="justify-content:space-between;">
-            <div class="muted" style="font-weight:800;">運営</div>
-            <div class="tag muted">pw 1122</div>
+          <div id="roomsArea">
+            <div id="roomsTitle">
+              <h2>部屋一覧（最大5部屋）</h2>
+              <span class="tag">参加 / 観戦</span>
+            </div>
+            <div class="muted" style="margin-top:6px;">
+              誰かがプレイ中でも、別部屋ならあなたもプレイできます。
+            </div>
+            <div id="roomsList"></div>
           </div>
-          <div class="row" style="margin-top:10px;">
-            <input id="adminPw" placeholder="1122" inputmode="numeric" maxlength="8" style="width:120px; padding:8px 10px; font-size:13px;" />
-            <button id="adminEnterBtn" class="secondary small">決定</button>
-            <button id="adminExitBtn" class="ghost small" style="display:none;">解除</button>
-          </div>
-          <div class="muted" style="margin-top:8px; font-size:12px;">
-            運営はこの端末だけ（ローカル）で有効になります。
-          </div>
-        </div>
-      </div>
-
-      <!-- middle -->
-      <div id="midCol" class="col">
-        <div class="card">
-          <div class="row" style="justify-content:space-between;">
-            <div style="font-weight:900; font-size:18px;">部屋一覧</div>
-            <span class="tag">最大5部屋</span>
-          </div>
-          <div class="muted" style="margin-top:6px;">
-            参加または観戦できます（誰かがプレイ中でも別部屋ならプレイ可能）
-          </div>
-          <div id="roomsList" style="margin-top:12px;"></div>
         </div>
       </div>
 
-      <!-- right -->
-      <div id="rightCol" class="col">
-        <div class="card thin" style="min-height:0;">
-          <div class="row" style="justify-content:space-between;">
-            <div class="muted" style="font-weight:900;">ランキング（上位）</div>
+      <div id="lobbyRight">
+        <div id="lbCard">
+          <div id="lbCardHeader">
+            <b>ランキング（上位）</b>
             <span class="tag">Realtime</span>
           </div>
           <div id="leaderboard" style="margin-top:10px;"></div>
+        </div>
+
+        <div id="adminMini">
+          <div class="row" style="justify-content:space-between;">
+            <b class="muted">運営</b>
+            <span class="tag">pw 1122</span>
+          </div>
+          <div class="row" style="margin-top:10px;">
+            <input id="adminPw" placeholder="1122" inputmode="numeric" maxlength="8" style="width:120px;" />
+            <button id="adminEnterBtn" class="secondary small">決定</button>
+            <button id="adminExitBtn" class="ghost small" style="display:none;">解除</button>
+          </div>
+          <div class="muted" style="margin-top:8px; font-size:12px; line-height:1.4;">
+            運営はこの端末だけ（ローカル）で有効。<br/>
+            有効化すると部屋一覧に運営ボタンが出ます。
+          </div>
         </div>
       </div>
     </div>
@@ -203,16 +277,21 @@
       </div>
 
       <div id="canvasWrap">
-        <canvas id="game"></canvas>
+        <!-- optional wave background -->
+        <div id="waveBg" class="dim"></div>
+        <canvas id="game" aria-label="game canvas"></canvas>
 
         <div id="hud" style="display:none;">
           <div id="hudLine1"></div>
           <div id="hudLine2" style="margin-top:4px;"></div>
           <div id="hudLine3" class="muted" style="margin-top:6px;"></div>
+          <div class="muted" style="margin-top:8px; font-size:12px;">
+            画面は自動で全体表示（スクロール不要） / 表示が小さければブラウザのズームを 100% にしてください
+          </div>
         </div>
 
         <div id="ann">
-          <div class="card">
+          <div class="panel">
             <div style="font-weight:900; margin-bottom:6px;" id="annTitle"></div>
             <div class="muted" id="annBody"></div>
           </div>
@@ -224,7 +303,7 @@
 
 <!-- modal -->
 <div id="modal">
-  <div class="card">
+  <div class="panel">
     <div style="font-weight:900; margin-bottom:6px;" id="modalTitle"></div>
     <div class="muted" style="margin-bottom:10px;" id="modalBody"></div>
     <div class="row">
@@ -294,6 +373,7 @@
     retireBtn: $("#retireBtn"),
     leaveRoomBtn: $("#leaveRoomBtn"),
 
+    waveBg: $("#waveBg"),
     canvas: $("#game"),
     hud: $("#hud"),
     hudLine1: $("#hudLine1"),
@@ -317,8 +397,8 @@
     ui.gameScreen.classList.toggle("active", name === "game");
   }
 
-  const sleep = (ms) => new Promise(r => setTimeout(r, ms));
   function uuidShort() { return Math.random().toString(16).slice(2, 10); }
+  const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 
   function showAnn(title, body) {
     ui.annTitle.textContent = title;
@@ -355,6 +435,8 @@
     localStorage.setItem("inv_admin", v ? "1" : "0");
     ui.adminTag.style.display = v ? "" : "none";
     ui.adminExitBtn.style.display = v ? "" : "none";
+    // re-render rooms list buttons (by forcing a small refresh)
+    // (rooms list is driven by onValue; easiest is to do nothing here)
   }
   setAdminMode(adminMode);
 
@@ -362,7 +444,7 @@
     if (ui.adminPw.value.trim() === "1122") {
       setAdminMode(true);
       ui.adminPw.value = "";
-    } else alert("パスワードが違います");
+    } else alert("���スワードが違います");
   };
   ui.adminExitBtn.onclick = () => setAdminMode(false);
 
@@ -425,8 +507,47 @@
     });
   }
 
-  // ---------------- Game draw ----------------
-  const ctx = ui.canvas.getContext("2d");
+  // ---------------- Wave background (optional images) ----------------
+  // Put files next to index.html:
+  //   w1.png, w2.png, w3.png, w4.png
+  // They are optional; if missing, it still works (falls back to gradient).
+  const waveBgCache = new Map(); // wave -> HTMLImageElement
+  function setWaveBackground(wave) {
+    if (!ui.waveBg) return;
+
+    const url = `w${wave}.png`;
+    // If already loaded successfully, apply immediately
+    if (waveBgCache.has(wave) && waveBgCache.get(wave).dataset.ok === "1") {
+      ui.waveBg.style.backgroundImage = `url("${url}")`;
+      ui.waveBg.classList.remove("dim");
+      return;
+    }
+
+    // Try loading (once). If fail, keep gradient.
+    if (waveBgCache.has(wave) && waveBgCache.get(wave).dataset.ok === "0") {
+      ui.waveBg.style.backgroundImage = "";
+      ui.waveBg.classList.add("dim");
+      return;
+    }
+
+    const img = new Image();
+    waveBgCache.set(wave, img);
+    img.onload = () => {
+      img.dataset.ok = "1";
+      ui.waveBg.style.backgroundImage = `url("${url}")`;
+      ui.waveBg.classList.remove("dim");
+    };
+    img.onerror = () => {
+      img.dataset.ok = "0";
+      ui.waveBg.style.backgroundImage = "";
+      ui.waveBg.classList.add("dim");
+    };
+    img.src = url;
+  }
+
+  // ---------------- Game draw (FULL SCREEN + larger sprites) ----------------
+  const ctx = ui.canvas.getContext("2d", { alpha: false });
+
   function resizeCanvas() {
     const dpr = window.devicePixelRatio || 1;
     const rect = ui.canvas.getBoundingClientRect();
@@ -440,12 +561,34 @@
   function toScreen(xNorm, yNorm) {
     const w = ui.canvas.getBoundingClientRect().width;
     const h = ui.canvas.getBoundingClientRect().height;
-    return { x: xNorm * w, y: yNorm * h };
+    return { x: xNorm * w, y: yNorm * h, w, h };
+  }
+
+  // Size tuning (bigger + consistent across resolutions)
+  function sizeForCanvas() {
+    const w = ui.canvas.getBoundingClientRect().width;
+    const h = ui.canvas.getBoundingClientRect().height;
+    // Base size grows with min dimension
+    const base = Math.max(10, Math.min(w, h) * 0.030); // ~3% of min dimension
+    return {
+      playerW: base * 1.8,
+      playerH: base * 1.0,
+      enemyS: base * 1.3,
+      bossW: base * 3.8,
+      bossH: base * 2.2,
+      pBulletW: Math.max(4, base * 0.30),
+      pBulletH: Math.max(14, base * 1.4),
+      eBulletS: Math.max(6, base * 0.55),
+      hazardR: Math.max(10, base * 1.3),
+    };
   }
 
   function drawIdle(text) {
     resizeCanvas();
     ctx.clearRect(0, 0, ui.canvas.width, ui.canvas.height);
+    ctx.fillStyle = "#0b0e14";
+    ctx.fillRect(0, 0, ui.canvas.getBoundingClientRect().width, ui.canvas.getBoundingClientRect().height);
+
     ctx.fillStyle = "#9fb0cc";
     ctx.font = "16px system-ui";
     ctx.fillText(text, 16, 28);
@@ -455,33 +598,46 @@
   function drawBossBar(boss) {
     if (!boss || !boss.alive) return;
     const w = ui.canvas.getBoundingClientRect().width;
-    const barW = Math.min(560, w - 24);
+    const barW = Math.min(620, w - 24);
     const x = (w - barW) / 2;
     const y = 12;
-    const h = 14;
+    const h = 16;
 
     const ratio = boss.hpMax > 0 ? Math.max(0, boss.hp / boss.hpMax) : 0;
 
     ctx.fillStyle = "rgba(10,14,22,.72)";
     ctx.fillRect(x - 6, y - 6, barW + 12, h + 12);
-    ctx.strokeStyle = "#1f2a3a";
+    ctx.strokeStyle = "rgba(31,42,58,.95)";
     ctx.strokeRect(x - 6, y - 6, barW + 12, h + 12);
 
     ctx.fillStyle = "#3a0b0b";
     ctx.fillRect(x, y, barW, h);
+
     ctx.fillStyle = boss.shieldLeft > 0 ? "#7bdff2" : "#ff3b3b";
     ctx.fillRect(x, y, barW * ratio, h);
 
     ctx.fillStyle = "#e8eefc";
     ctx.font = "12px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace";
     const shield = boss.shieldLeft > 0 ? ` SHIELD:${boss.shieldLeft.toFixed(1)}s` : "";
-    ctx.fillText(`BOSS HP ${boss.hp}/${boss.hpMax}  PHASE:${boss.phase}${shield}`, x + 6, y + 11);
+    ctx.fillText(`BOSS HP ${boss.hp}/${boss.hpMax}  PHASE:${boss.phase}${shield}`, x + 8, y + 12);
   }
 
   function drawState(g, myUid) {
     resizeCanvas();
-    ctx.clearRect(0, 0, ui.canvas.width, ui.canvas.height);
+
+    const rect = ui.canvas.getBoundingClientRect();
+    const W = rect.width, H = rect.height;
+
+    // background base
+    ctx.fillStyle = "#05070b";
+    ctx.fillRect(0, 0, W, H);
+
     ui.hud.style.display = "";
+
+    // update wave background (optional image)
+    setWaveBackground(g.wave || 1);
+
+    const sz = sizeForCanvas();
 
     const my = (g.players || []).find(p => p.uid === myUid);
     if (my) {
@@ -494,58 +650,79 @@
       ui.youTag.textContent = `YOU:${colorLabel}`;
     } else {
       ui.hudLine1.textContent = `WAVE: ${g.wave} elapsed:${g.elapsed ?? "?"}`;
-      ui.hudLine2.textContent = "";
+      ui.hudLine2.textContent = "観戦中";
       ui.hudLine3.textContent = "";
       ui.youTag.textContent = `YOU:WATCH`;
     }
 
     drawBossBar(g.boss);
 
+    // enemies
     for (const e of (g.enemies || [])) {
       const s = toScreen(e.x, e.y);
+      const size = sz.enemyS;
       ctx.fillStyle =
         e.type === "A" ? "#ffd166" :
         e.type === "B" ? "#ff9f1c" :
         e.type === "C" ? "#7bdff2" :
         e.type === "E" ? "#b8f2a6" : "#ffd166";
-      ctx.fillRect(s.x - 8, s.y - 8, 16, 16);
+      ctx.fillRect(s.x - size/2, s.y - size/2, size, size);
+      // outline
+      ctx.strokeStyle = "rgba(0,0,0,.35)";
+      ctx.strokeRect(s.x - size/2, s.y - size/2, size, size);
     }
 
+    // hazards D (bigger)
     for (const h of (g.hazards || [])) {
       const s = toScreen(h.x, h.y);
       ctx.fillStyle = "#ff4d6d";
       ctx.beginPath();
-      ctx.arc(s.x, s.y, 10, 0, Math.PI * 2);
+      ctx.arc(s.x, s.y, sz.hazardR, 0, Math.PI * 2);
       ctx.fill();
+      ctx.strokeStyle = "rgba(0,0,0,.35)";
+      ctx.stroke();
     }
 
+    // boss
     if (g.boss && g.boss.alive) {
       const s = toScreen(g.boss.x, g.boss.y);
       ctx.fillStyle = g.boss.shieldLeft > 0 ? "#7bdff2" : "#ff3b3b";
-      ctx.fillRect(s.x - 26, s.y - 14, 52, 28);
+      ctx.fillRect(s.x - sz.bossW/2, s.y - sz.bossH/2, sz.bossW, sz.bossH);
       ctx.strokeStyle = "#ffffff";
       ctx.lineWidth = 2;
-      ctx.strokeRect(s.x - 26, s.y - 14, 52, 28);
+      ctx.strokeRect(s.x - sz.bossW/2, s.y - sz.bossH/2, sz.bossW, sz.bossH);
+      ctx.lineWidth = 1;
     }
 
+    // players (bigger)
     for (const p of (g.players || [])) {
       const s = toScreen(p.x, p.y);
       const col = p.color === "red" ? "#ff3b3b" : "#2b78ff";
       ctx.fillStyle = col;
-      ctx.fillRect(s.x - 12, s.y - 7, 24, 14);
+      ctx.fillRect(s.x - sz.playerW/2, s.y - sz.playerH/2, sz.playerW, sz.playerH);
+
+      // make dead visible (dim)
+      if (!p.alive) {
+        ctx.fillStyle = "rgba(0,0,0,.55)";
+        ctx.fillRect(s.x - sz.playerW/2, s.y - sz.playerH/2, sz.playerW, sz.playerH);
+      }
+
       if (p.uid === myUid) {
         ctx.strokeStyle = "#ffffff";
         ctx.lineWidth = 2;
-        ctx.strokeRect(s.x - 14, s.y - 9, 28, 18);
+        ctx.strokeRect(s.x - sz.playerW/2 - 3, s.y - sz.playerH/2 - 3, sz.playerW + 6, sz.playerH + 6);
+        ctx.lineWidth = 1;
       }
     }
 
+    // player bullets (bigger)
     ctx.fillStyle = "#e8eefc";
     for (const b of (g.playerBullets || [])) {
       const s = toScreen(b.x, b.y);
-      ctx.fillRect(s.x - 2, s.y - 8, 4, 16);
+      ctx.fillRect(s.x - sz.pBulletW/2, s.y - sz.pBulletH/2, sz.pBulletW, sz.pBulletH);
     }
 
+    // enemy bullets (bigger + more visible)
     for (const b of (g.enemyBullets || [])) {
       const s = toScreen(b.x, b.y);
       const col =
@@ -555,7 +732,11 @@
         (b.type || "").includes("SPLIT") ? "#ffd6ff" :
         "#ffccff";
       ctx.fillStyle = col;
-      ctx.fillRect(s.x - 3, s.y - 3, 6, 6);
+      ctx.beginPath();
+      ctx.arc(s.x, s.y, sz.eBulletS, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = "rgba(0,0,0,.35)";
+      ctx.stroke();
     }
   }
 
@@ -594,7 +775,7 @@
     };
   }
 
-  // ---------------- Game simulation ----------------
+  // ---------------- Game simulation (UNCHANGED) ----------------
   const WAVE_DUR = [30, 40, 90, 140];
   const SHOOT_CD = 3.0;
   const SCORE = { A: 60, B: 120, C: 200, D: 0, E: 300, BOSS_HIT: 10, BOSS_KILL: 5000 };
@@ -1001,7 +1182,6 @@
           b.dead = true;
           if (boss.shieldLeft>0) continue;
           boss.hp -= 1;
-          const p=st.players[b.ownerUid]; if (p) p.score += SCORE.BOSS_HIT;
           if (boss.hp<=0) { boss.alive = false; }
         }
       }
@@ -1187,6 +1367,9 @@
     ui.roomTag.textContent = "room:-";
     ui.readyBtn.style.display = "none";
     ui.retireBtn.style.display = "none";
+    ui.modeTag.textContent = "mode:-";
+    ui.stateTag.textContent = "state:-";
+    ui.youTag.textContent = "YOU:-";
 
     if (goLobby) setScreen("lobby");
   }
@@ -1242,17 +1425,17 @@
         const btns = document.createElement("div");
         btns.className = "roomBtns";
 
-        const joinBtn = document.createElement("button");
-        joinBtn.className = "secondary small";
-        joinBtn.textContent = "入室";
-        joinBtn.onclick = async () => { await enterRoom(r.roomId); };
+        const enterBtn = document.createElement("button");
+        enterBtn.className = "secondary small";
+        enterBtn.textContent = "入室";
+        enterBtn.onclick = async () => { await enterRoom(r.roomId); };
 
         const watchBtn = document.createElement("button");
         watchBtn.className = "ghost small";
         watchBtn.textContent = "観戦";
         watchBtn.onclick = async () => { await enterRoom(r.roomId); };
 
-        btns.appendChild(joinBtn);
+        btns.appendChild(enterBtn);
         btns.appendChild(watchBtn);
 
         if (adminMode) {
@@ -1335,7 +1518,7 @@
         }
       }
 
-      // auto cleanup: nobody online -> delete room (NO stale-game)
+      // cleanup if nobody online
       await maybeRoomAutoCleanup(roomId, room);
 
       // backup: 7min -> finish (even if host loop stopped)
@@ -1349,7 +1532,7 @@
       // start host loop
       await startHostLoopIfNeeded(roomId, room);
 
-      // finished -> delete room (end timing)
+      // finished -> delete room
       if (room.state === "finished") {
         showAnn("ゲーム終了", `理由: ${room.finishedReason || "?"}\n部屋を閉じます…`);
         setTimeout(async () => {
@@ -1446,7 +1629,8 @@
   onAuthStateChanged(auth, async (user) => {
     if (!user) return;
 
-    currentUserId = user.uid;
+    const userId = user.uid;
+    currentUserId = userId;
     ui.me.textContent = `uid: ${currentUserId.slice(0, 8)}…`;
 
     await bindPresence(currentUserId);
@@ -1456,19 +1640,18 @@
     currentUserName = await getMyName(currentUserId);
     if (!currentUserName) {
       setScreen("name");
-      ui.nameHint.textContent = "名前を入力して決��してください";
+      ui.nameHint.textContent = "名前を入力して決定してください";
     } else {
-      ui.myNameLabel.textContent = `名前: ${currentUserName}`;
+      ui.myNameLabel.textContent = currentUserName;
       setScreen("lobby");
     }
 
-    // ★「決定が押せない」対策：ここで必ずonclickをセット（途中で例外が起きないように、必要な要素は全て存在）
     ui.saveNameBtn.onclick = async () => {
       const v = ui.nameInput.value.trim().slice(0, 20);
       if (!v) { ui.nameHint.textContent = "名前を入力してください"; return; }
       await setMyName(currentUserId, v);
       currentUserName = v;
-      ui.myNameLabel.textContent = `名前: ${currentUserName}`;
+      ui.myNameLabel.textContent = currentUserName;
       setScreen("lobby");
     };
 

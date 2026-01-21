@@ -184,15 +184,19 @@
   <!-- Game screen -->
   <section id="gameScreen" class="screen">
     <div id="gameWrap">
-      <div id="gameTopBar">
-        <span id="screenTitle">ゲーム</span>
-        <span class="tag" id="youTag">YOU:-</span>
-        <span class="tag" id="modeTag">mode:-</span>
-        <span class="tag" id="stateTag">state:-</span>
-        <div class="spacer"></div>
-        <button id="retireBtn" class="danger" style="display:none;">ゲームリアタイア（ホスト）</button>
-        <button id="backLobbyBtn" class="secondary" style="display:none;">ロビーへ</button>
-      </div>
+<div id="gameTopBar">
+  <span id="screenTitle">ゲーム</span>
+  <span class="tag" id="youTag">YOU:-</span>
+  <span class="tag" id="modeTag">mode:-</span>
+  <span class="tag" id="stateTag">state:-</span>
+  <div class="spacer"></div>
+
+  <!-- ★追加：準備完了 -->
+  <button id="readyBtn" class="secondary" style="display:none;">準備完了</button>
+
+  <button id="retireBtn" class="danger" style="display:none;">ゲームリアタイア（ホスト）</button>
+  <button id="backLobbyBtn" class="secondary" style="display:none;">ロビーへ</button>
+</div>
 
       <div id="canvasWrap">
         <canvas id="game"></canvas>
@@ -273,6 +277,10 @@
   };
 
   const ui = {
+
+readyBtn: $("#readyBtn"),
+
+    
     me: $("#me"),
     statusLine: $("#statusLine"),
     roleTag: $("#roleTag"),

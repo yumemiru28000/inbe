@@ -1,4 +1,3 @@
-
 <!doctype html>
 <html lang="ja">
 <head>
@@ -16,7 +15,6 @@
     #main { display:grid; grid-template-columns: 360px 1fr; min-height:0; }
     #left { border-right:1px solid #1f2a3a; padding:12px; overflow:auto; }
     #right { min-height:0; display:flex; flex-direction:column; }
-
     #canvasWrap { flex: 1; min-height: 0; display:flex; position:relative; }
     canvas { width: 100%; height: 100%; display:block; background: #05070b; }
 
@@ -27,8 +25,8 @@
     button.danger { background:#b42318; }
     button[disabled] { opacity:.45; cursor:not-allowed; }
     input { width: 100%; box-sizing:border-box; padding:8px 10px; border-radius:8px; border:1px solid #26344a; background:#0b1220; color:#e8eefc; }
-
     small.mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; color:#a8b3c7; }
+    .tag { padding:2px 6px; border-radius: 999px; border:1px solid #1f2a3a; background:#0b1220; color:#a8b3c7; font-size:12px; }
 
     body.playing #main { grid-template-columns: 0px 1fr; }
     body.playing #left { display:none; }
@@ -47,12 +45,9 @@
 
     #ann { position:absolute; inset:0; display:none; align-items:center; justify-content:center; background: rgba(0,0,0,.60); }
     #ann .card { width:min(560px, 92vw); }
-
     #modal { position:absolute; inset:0; display:none; align-items:center; justify-content:center; background: rgba(0,0,0,.60); }
     #modal .card { width:min(560px, 92vw); }
     #modal .row { justify-content:flex-end; }
-
-    .tag { padding:2px 6px; border-radius: 999px; border:1px solid #1f2a3a; background:#0b1220; color:#a8b3c7; font-size:12px; }
   </style>
 </head>
 <body>
@@ -66,7 +61,7 @@
 
     <div id="main">
       <div id="left">
-        <div class="card" id="nameCard">
+        <div class="card">
           <div style="font-weight:700; margin-bottom:6px;">名前（最初に必須）</div>
           <input id="nameInput" placeholder="表示名" maxlength="20" />
           <div class="row" style="margin-top:8px;">
@@ -143,13 +138,11 @@
   </div>
 
 <script type="module">
-  // ---------------- Firebase imports ----------------
   import { initializeApp } from "https://www.gstatic.com/firebasejs/12.8.0/firebase-app.js";
   import { getDatabase, ref, onValue, get, set, update, remove, runTransaction, serverTimestamp, onDisconnect } from "https://www.gstatic.com/firebasejs/12.8.0/firebase-database.js";
   import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/12.8.0/firebase-auth.js";
   import { getAnalytics } from "https://www.gstatic.com/firebasejs/12.8.0/firebase-analytics.js";
 
-  // ---------------- Firebase config (yours) ----------------
   const firebaseConfig = {
     apiKey: "AIzaSyBePhUfYinZ02-1BWbZvzV3IBwoAYh-kxE",
     authDomain: "suisougaku-bdcc0.firebaseapp.com",
@@ -166,7 +159,6 @@
   const db = getDatabase(app);
   const auth = getAuth(app);
 
-  // ---------------- Paths ----------------
   const PATHS = {
     presence: (uid) => `presence/${uid}`,
     names: (uid) => `lobby/names/${uid}`,
@@ -180,7 +172,6 @@
     submissions: (sid) => `submissions/${sid}`
   };
 
-  // ---------------- UI ----------------
   const $ = (q) => document.querySelector(q);
   const ui = {
     me: $("#me"),
@@ -192,27 +183,22 @@
     nameInput: $("#nameInput"),
     saveNameBtn: $("#saveNameBtn"),
     nameHint: $("#nameHint"),
-
     soloBtn: $("#soloBtn"),
     multiBtn: $("#multiBtn"),
     watchBtn: $("#watchBtn"),
     readyBtn: $("#readyBtn"),
     retireBtn: $("#retireBtn"),
     leaveBtn: $("#leaveBtn"),
-
     screenTitle: $("#screenTitle"),
     screenSub: $("#screenSub"),
-
     canvas: $("#game"),
     hud: $("#hud"),
     hudLine1: $("#hudLine1"),
     hudLine2: $("#hudLine2"),
     hudLine3: $("#hudLine3"),
-
     ann: $("#ann"),
     annTitle: $("#annTitle"),
     annBody: $("#annBody"),
-
     modal: $("#modal"),
     modalTitle: $("#modalTitle"),
     modalBody: $("#modalBody"),
@@ -233,7 +219,6 @@
     ui.modal.style.display = "flex";
   }
   function hideModal() { ui.modal.style.display = "none"; }
-
   function modalAsk(title, body) {
     return new Promise((resolve) => {
       showModal(title, body);
@@ -250,8 +235,67 @@
   }
 
   function uuidShort() { return Math.random().toString(16).slice(2, 10); }
+  const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 
-  // ---------------- Renderer (Canvas) ----------------
+  // ---------- Presence helpers ----------
+  async function isOnline(uid) {
+    if (!uid) return false;
+    const s = await get(ref(db, PATHS.presence(uid)));
+    const v = s.val();
+    return !!v?.online;
+  }
+
+  // Choose a "leader" to cleanup when host is gone (simple & deterministic: smallest uid string)
+  function chooseLeaderUid(session) {
+    const ids = [session?.hostUid, session?.p1Uid, session?.p2Uid].filter(Boolean);
+    if (!ids.length) return null;
+    ids.sort();
+    return ids[0];
+  }
+
+  // ---------- Name / leaderboard ----------
+  async function getMyName(uid) {
+    const snap = await get(ref(db, PATHS.names(uid)));
+    const v = snap.val();
+    return (typeof v === "string" && v.trim()) ? v.trim() : "";
+  }
+
+  function bindLeaderboard() {
+    onValue(ref(db, PATHS.leaderboardTop), (snap) => {
+      const data = snap.val() || [];
+      ui.leaderboard.innerHTML = "";
+      if (!Array.isArray(data) || data.length === 0) {
+        ui.leaderboard.textContent = "まだ記録がありません";
+        return;
+      }
+      const ol = document.createElement("ol");
+      ol.style.margin = "0 0 0 18px";
+      for (const row of data) {
+        const li = document.createElement("li");
+        li.textContent = `${row.name ?? "?"} - ${row.score ?? 0}`;
+        ol.appendChild(li);
+      }
+      ui.leaderboard.appendChild(ol);
+    });
+  }
+
+  function bindName(uid) {
+    const nameRef = ref(db, PATHS.names(uid));
+    onValue(nameRef, (snap) => {
+      const v = snap.val();
+      if (typeof v === "string") ui.nameInput.value = v;
+    });
+    ui.saveNameBtn.onclick = async () => {
+      const v = ui.nameInput.value.trim().slice(0, 20);
+      await set(nameRef, v || "no-name");
+      ui.nameHint.textContent = `保存済み: ${(v || "no-name")}`;
+    };
+  }
+
+  // ---------- ClientState ----------
+  const setClientState = (uid, st) => set(ref(db, PATHS.sessionClientState(uid)), st);
+
+  // ---------- Canvas / draw ----------
   const ctx = ui.canvas.getContext("2d");
   function resizeCanvas() {
     const dpr = window.devicePixelRatio || 1;
@@ -291,13 +335,11 @@
 
     ctx.fillStyle = "rgba(10,14,22,.72)";
     ctx.fillRect(x - 6, y - 6, barW + 12, h + 12);
-
     ctx.strokeStyle = "#1f2a3a";
     ctx.strokeRect(x - 6, y - 6, barW + 12, h + 12);
 
     ctx.fillStyle = "#3a0b0b";
     ctx.fillRect(x, y, barW, h);
-
     ctx.fillStyle = boss.shieldLeft > 0 ? "#7bdff2" : "#ff3b3b";
     ctx.fillRect(x, y, barW * ratio, h);
 
@@ -328,7 +370,6 @@
 
     drawBossBar(g.boss);
 
-    // Wave1-3 enemies
     for (const e of (g.enemies || [])) {
       const s = toScreen(e.x, e.y);
       ctx.fillStyle =
@@ -339,7 +380,6 @@
       ctx.fillRect(s.x - 8, s.y - 8, 16, 16);
     }
 
-    // hazards D
     for (const h of (g.hazards || [])) {
       const s = toScreen(h.x, h.y);
       ctx.fillStyle = "#ff4d6d";
@@ -348,7 +388,6 @@
       ctx.fill();
     }
 
-    // boss body
     if (g.boss && g.boss.alive) {
       const s = toScreen(g.boss.x, g.boss.y);
       ctx.fillStyle = g.boss.shieldLeft > 0 ? "#7bdff2" : "#ff3b3b";
@@ -358,7 +397,6 @@
       ctx.strokeRect(s.x - 26, s.y - 14, 52, 28);
     }
 
-    // players
     for (const p of (g.players || [])) {
       const s = toScreen(p.x, p.y);
       const col = p.color === "red" ? "#ff3b3b" : "#2b78ff";
@@ -371,14 +409,12 @@
       }
     }
 
-    // player bullets
     ctx.fillStyle = "#e8eefc";
     for (const b of (g.playerBullets || [])) {
       const s = toScreen(b.x, b.y);
       ctx.fillRect(s.x - 2, s.y - 8, 4, 16);
     }
 
-    // enemy bullets
     for (const b of (g.enemyBullets || [])) {
       const s = toScreen(b.x, b.y);
       const col =
@@ -392,7 +428,35 @@
     }
   }
 
-  // ---------------- Game simulation (host only) ----------------
+  // ---------- Input sender + idle tracking ----------
+  function bindInputSender(uid) {
+    const keys = { left:false, right:false, shoot:false };
+    let playing = false;
+
+    onValue(ref(db, PATHS.sessionCurrent), (snap) => {
+      const s = snap.val();
+      playing = s?.state === "playing" && (s?.p1Uid === uid || s?.p2Uid === uid);
+    });
+
+    window.addEventListener("keydown", (e) => {
+      if (e.code === "KeyA") keys.left = true;
+      if (e.code === "KeyD") keys.right = true;
+      if (e.code === "Space") { keys.shoot = true; e.preventDefault(); }
+    });
+    window.addEventListener("keyup", (e) => {
+      if (e.code === "KeyA") keys.left = false;
+      if (e.code === "KeyD") keys.right = false;
+      if (e.code === "Space") { keys.shoot = false; e.preventDefault(); }
+    });
+
+    setInterval(() => {
+      if (!playing) return;
+      // lastInputAt を入れる（ホストが60秒無操作判定に使う）
+      set(ref(db, PATHS.sessionInputs(uid)), { ...keys, t: Date.now() });
+    }, 50);
+  }
+
+  // ---------- Game Sim (host) ----------
   const WAVE_DUR = [30, 40, 90, 140];
   const SHOOT_CD = 3.0;
   const SCORE = { A: 60, B: 120, C: 200, D: 0, E: 300, BOSS_HIT: 10, BOSS_KILL: 5000 };
@@ -418,6 +482,7 @@
   const normalizeAngle=(a)=>{while(a>Math.PI)a-=Math.PI*2;while(a<-Math.PI)a+=Math.PI*2;return a;};
   const mulberry32=(a)=>()=>{let t=a+=0x6D2B79F5;t=Math.imul(t^(t>>>15),t|1);t^=t+Math.imul(t^(t>>>7),t|61);return((t^(t>>>14))>>>0)/4294967296;};
   const randChoice=(rng,arr)=>arr[Math.floor(rng()*arr.length)];
+  const bossPhase = (b)=> b.hp>30?1:b.hp>20?2:b.hp>10?3:4;
 
   function createHostSim(session) {
     const p1Uid = session.p1Uid;
@@ -492,36 +557,22 @@
       if (w===3) spawnFormation(["B","C"]);
       if (w===4) spawnBoss();
     }
-
     spawnWave(1);
-
-    function bossPhase(b) {
-      if (b.hp > 30) return 1;
-      if (b.hp > 20) return 2;
-      if (b.hp > 10) return 3;
-      return 4;
-    }
 
     function pickAlivePlayer() {
       const arr = Object.values(st.players).filter(p=>p.alive);
-      if (arr.length===0) return null;
+      if (!arr.length) return null;
       return arr[Math.floor(st.rng()*arr.length)];
     }
 
     function updateFormation(dt) {
       const fes = st.enemies.filter(e=>e.alive && (e.type==="A"||e.type==="B"||e.type==="C"));
       if (!fes.length) return;
-
       let minX=Infinity, maxX=-Infinity;
-      for (const e of fes) {
-        const x=e.baseX+st.formation.xOffset;
-        minX=Math.min(minX,x); maxX=Math.max(maxX,x);
-      }
-
+      for (const e of fes) { const x=e.baseX+st.formation.xOffset; minX=Math.min(minX,x); maxX=Math.max(maxX,x); }
       st.formation.xOffset += st.formation.dir * st.formation.speedBase * dt;
       if (maxX>0.92){ st.formation.dir=-1; st.formation.yOffset += st.formation.stepDown; }
       if (minX<0.08){ st.formation.dir= 1; st.formation.yOffset += st.formation.stepDown; }
-
       for (const e of fes) {
         const extra=(e.type==="B")?(ENEMY.B.moveSpeed-ENEMY.A.moveSpeed):0;
         e.x = e.baseX + st.formation.xOffset*(1+extra);
@@ -572,12 +623,10 @@
     function moveEnemyBullets(dt) {
       for (const b of st.enemyBullets) {
         if (b.dead) continue;
-
         if (b.waveAmp) {
           b.waveT=(b.waveT??0)+dt;
           b.x += Math.sin(b.waveT*b.waveFreq)*b.waveAmp*dt;
         }
-
         if (b.splitAt!=null) {
           b.life=(b.life??0)+dt;
           if (!b.splitDone && b.life>=b.splitAt) {
@@ -588,7 +637,6 @@
             b.dead=true; continue;
           }
         }
-
         if (b.type==="C_HOMING" && b.homingLeft>0) {
           b.homingLeft-=dt;
           const t = pickAlivePlayer();
@@ -604,10 +652,8 @@
             b.vy=Math.sin(turned)*spd;
           }
         }
-
         b.x += b.vx*dt;
         b.y += b.vy*dt;
-
         if (b.y>1.2 || b.x<-0.2 || b.x>1.2) b.dead=true;
       }
       st.enemyBullets = st.enemyBullets.filter(b=>!b.dead);
@@ -616,14 +662,11 @@
     function enemyFire(dt) {
       const alivePlayers = Object.values(st.players).filter(p=>p.alive);
       if (!alivePlayers.length) return;
-
       for (const e of st.enemies) {
         if (!e.alive) continue;
         if (!(e.type==="A"||e.type==="B"||e.type==="C"||e.type==="E")) continue;
-
         const cfg = ENEMY[e.type];
         e.fireAcc=(e.fireAcc??0)+cfg.firePerSec*dt;
-
         while (e.fireAcc>=1) {
           e.fireAcc-=1;
           if (e.type==="C") {
@@ -680,64 +723,7 @@
       }
     }
 
-    // ----- Boss -----
-    function updateBoss(dt, wave4Elapsed) {
-      const boss = st.boss;
-      if (!boss || !boss.alive) return;
-
-      boss.time += dt;
-
-      // 140秒以降は激化（A案）
-      const over = Math.max(0, wave4Elapsed - WAVE_DUR[3]);
-      const enrage = 1 + over * 0.012;
-
-      // movement
-      if (boss.dashLeft>0) {
-        boss.dashLeft -= dt;
-        boss.x += boss.dashDir*(BOSS.moveSpeed*3.2)*dt;
-        if (boss.x<0.12){ boss.x=0.12; boss.dashDir=1; }
-        if (boss.x>0.88){ boss.x=0.88; boss.dashDir=-1; }
-      } else {
-        boss.x += Math.sin(boss.time*0.9)*0.06*dt;
-        boss.x = clamp(boss.x,0.12,0.88);
-      }
-
-      // shield
-      boss.shieldAcc += dt;
-      if (boss.shieldLeft>0) boss.shieldLeft -= dt;
-      if (boss.shieldAcc >= BOSS.shieldEvery) {
-        boss.shieldAcc = 0;
-        boss.shieldLeft = BOSS.shieldDuration;
-      }
-
-      // feint queue
-      for (const f of boss.feintQueue) f.t -= dt;
-      while (boss.feintQueue.length && boss.feintQueue[0].t <= 0) {
-        const fire = boss.feintQueue.shift();
-        if (fire) fire.pattern();
-      }
-
-      const phase = bossPhase(boss);
-      const baseAttacksPerSec =
-        phase===1 ? 0.55 :
-        phase===2 ? 0.75 :
-        phase===3 ? 0.95 : 1.20;
-
-      boss.attackAcc += baseAttacksPerSec * Math.min(2.2, enrage) * dt;
-
-      while (boss.attackAcc >= 1) {
-        boss.attackAcc -= 1;
-        doBossAttack(phase, Math.min(2.2, enrage));
-      }
-
-      // 全員死ぬまで終わらない：ボス撃破しても“終わり”にしない
-      // → HP0になったら少し待って復活（激化継続）
-      if (boss.hp <= 0) {
-        boss.alive = false;
-        st._bossRespawnAcc += dt;
-      }
-    }
-
+    // Boss patterns
     function doBossAttack(phase, enrage) {
       const patterns = [pRing, pRightSide];
       if (phase>=2) patterns.push(pSnipe, pSplit);
@@ -746,7 +732,6 @@
       const p = randChoice(st.rng, patterns);
       p(enrage);
     }
-
     function pRing(enrage) {
       const boss=st.boss;
       const phase=bossPhase(boss);
@@ -833,6 +818,47 @@
       }
     }
 
+    function updateBoss(dt, wave4Elapsed) {
+      const boss = st.boss;
+      if (!boss || !boss.alive) return;
+
+      boss.time += dt;
+      const over = Math.max(0, wave4Elapsed - WAVE_DUR[3]);
+      const enrage = 1 + over * 0.012;
+
+      // movement
+      if (boss.dashLeft>0) {
+        boss.dashLeft -= dt;
+        boss.x += boss.dashDir*(BOSS.moveSpeed*3.2)*dt;
+        if (boss.x<0.12){ boss.x=0.12; boss.dashDir=1; }
+        if (boss.x>0.88){ boss.x=0.88; boss.dashDir=-1; }
+      } else {
+        boss.x += Math.sin(boss.time*0.9)*0.06*dt;
+        boss.x = clamp(boss.x,0.12,0.88);
+      }
+
+      // shield
+      boss.shieldAcc += dt;
+      if (boss.shieldLeft>0) boss.shieldLeft -= dt;
+      if (boss.shieldAcc >= BOSS.shieldEvery) {
+        boss.shieldAcc = 0;
+        boss.shieldLeft = BOSS.shieldDuration;
+      }
+
+      // feint queue
+      for (const f of boss.feintQueue) f.t -= dt;
+      while (boss.feintQueue.length && boss.feintQueue[0].t <= 0) {
+        const fire = boss.feintQueue.shift();
+        if (fire) fire.pattern();
+      }
+
+      const phase = bossPhase(boss);
+      const baseAttacksPerSec = phase===1?0.55:phase===2?0.75:phase===3?0.95:1.20;
+      boss.attackAcc += baseAttacksPerSec * Math.min(2.2,enrage) * dt;
+
+      while (boss.attackAcc >= 1) { boss.attackAcc -= 1; doBossAttack(phase, Math.min(2.2,enrage)); }
+    }
+
     function collidePlayerBulletsToBoss() {
       const boss=st.boss;
       if (!boss || !boss.alive) return;
@@ -846,8 +872,7 @@
           const p=st.players[b.ownerUid]; if (p) p.score += SCORE.BOSS_HIT;
           if (boss.hp<=0) {
             const p2=st.players[b.ownerUid]; if (p2) p2.score += SCORE.BOSS_KILL;
-            // 撃破後、弾は少し残ってもいいが、見やすくするため弱めに掃除
-            // st.enemyBullets = st.enemyBullets.filter(bb => (bb.y < 0.8));
+            boss.alive = false; // 死亡
           }
         }
       }
@@ -863,6 +888,10 @@
       }
     }
 
+    function isAllDead() {
+      return Object.values(st.players).every(p=>!p.alive);
+    }
+
     function step(dt) {
       st.tick++;
       st.elapsed += dt;
@@ -876,16 +905,12 @@
       else if (t < tW3) newWave=3;
       else newWave=4;
 
-      if (newWave !== st.wave) {
-        st.wave = newWave;
-        spawnWave(newWave);
-      }
+      if (newWave !== st.wave) { st.wave = newWave; spawnWave(newWave); }
 
-      // player move & shoot
+      // players
       for (const uid in st.players) {
         const p=st.players[uid];
         if (!p.alive) continue;
-
         const inp = lastInputs?.[uid] || {};
         const speed=0.45;
         if (inp.left) p.x -= speed*dt;
@@ -912,17 +937,12 @@
         collideHazardsToPlayers();
         collidePlayerBulletsToEnemies();
       } else {
-        // boss
-        const wave4Start=tW3;
-        const wave4Elapsed=Math.max(0, st.elapsed-wave4Start);
+        const wave4Elapsed = Math.max(0, st.elapsed - tW3);
 
-        // boss respawn loop to ensure "never ends until all dead"
+        // "全員死ぬまで終わらない"：ボスが倒れても復活する
         if ((!st.boss || !st.boss.alive) && !isAllDead()) {
           st._bossRespawnAcc += dt;
-          if (st._bossRespawnAcc >= 3.0) { // 3秒で復活
-            st._bossRespawnAcc = 0;
-            spawnBoss();
-          }
+          if (st._bossRespawnAcc >= 3.0) { st._bossRespawnAcc = 0; spawnBoss(); }
         } else {
           st._bossRespawnAcc = 0;
         }
@@ -936,10 +956,6 @@
 
       movePlayerBullets(dt);
       st.playerBullets = st.playerBullets.filter(b=>!b.dead);
-    }
-
-    function isAllDead() {
-      return Object.values(st.players).every(p=>!p.alive);
     }
 
     function snapshot() {
@@ -969,96 +985,21 @@
     return { step, snapshot, applyInputs, isAllDead };
   }
 
-  // ---------------- Input sender ----------------
-  function bindInputSender(uid) {
-    const keys = { left:false, right:false, shoot:false };
-    let playing = false;
-
-    onValue(ref(db, PATHS.sessionCurrent), (snap) => {
-      const s = snap.val();
-      playing = s?.state === "playing" && (s?.p1Uid === uid || s?.p2Uid === uid);
-    });
-
-    window.addEventListener("keydown", (e) => {
-      if (e.code === "KeyA") keys.left = true;
-      if (e.code === "KeyD") keys.right = true;
-      if (e.code === "Space") { keys.shoot = true; e.preventDefault(); }
-    });
-    window.addEventListener("keyup", (e) => {
-      if (e.code === "KeyA") keys.left = false;
-      if (e.code === "KeyD") keys.right = false;
-      if (e.code === "Space") { keys.shoot = false; e.preventDefault(); }
-    });
-
-    setInterval(() => {
-      if (!playing) return;
-      set(ref(db, PATHS.sessionInputs(uid)), { ...keys, t: Date.now() });
-    }, 50);
-  }
-
-  // ---------------- Lobby / session logic ----------------
-  async function getMyName(uid) {
-    const snap = await get(ref(db, PATHS.names(uid)));
-    const v = snap.val();
-    return (typeof v === "string" && v.trim()) ? v.trim() : "";
-  }
-
-  function bindLeaderboard() {
-    onValue(ref(db, PATHS.leaderboardTop), (snap) => {
-      const data = snap.val() || [];
-      ui.leaderboard.innerHTML = "";
-      if (!Array.isArray(data) || data.length === 0) {
-        ui.leaderboard.textContent = "まだ記録がありません";
-        return;
-      }
-      const ol = document.createElement("ol");
-      ol.style.margin = "0 0 0 18px";
-      for (const row of data) {
-        const li = document.createElement("li");
-        li.textContent = `${row.name ?? "?"} - ${row.score ?? 0}`;
-        ol.appendChild(li);
-      }
-      ui.leaderboard.appendChild(ol);
-    });
-  }
-
-  function bindName(uid) {
-    const nameRef = ref(db, PATHS.names(uid));
-    onValue(nameRef, (snap) => {
-      const v = snap.val();
-      if (typeof v === "string") ui.nameInput.value = v;
-    });
-    ui.saveNameBtn.onclick = async () => {
-      const v = ui.nameInput.value.trim().slice(0, 20);
-      await set(nameRef, v || "no-name");
-      ui.nameHint.textContent = `保存済み: ${(v || "no-name")}`;
-    };
-  }
-
-  function setClientState(uid, st) {
-    return set(ref(db, PATHS.sessionClientState(uid)), st);
-  }
-
-  // ---- score consent flow ----
+  // ---------- Score consent + leaderboard ----------
   async function maybeSubmitScoreFlow({ uid, session, game }) {
-    // session finished -> ask consent
     if (!session?.sessionId) return;
     const sid = session.sessionId;
-
-    // 自分のスコア
-    const me = (game?.players || []).find(p => p.uid === uid);
-    const myScore = me?.score ?? 0;
 
     const isPlayer = session.p1Uid === uid || session.p2Uid === uid;
     if (!isPlayer) return;
 
-    const subRef = ref(db, PATHS.submissions(sid));
-    const subSnap = await get(subRef);
-    let sub = subSnap.val();
+    const me = (game?.players || []).find(p => p.uid === uid);
+    const myScore = me?.score ?? 0;
 
-    // 初期化
-    if (!sub) {
-      sub = {
+    const subRef = ref(db, PATHS.submissions(sid));
+    const existing = (await get(subRef)).val();
+    if (!existing) {
+      await set(subRef, {
         sessionId: sid,
         mode: session.mode,
         p1Uid: session.p1Uid,
@@ -1069,79 +1010,58 @@
         scoreP1: null,
         scoreP2: null,
         createdAt: Date.now()
-      };
-      await set(subRef, sub);
+      });
     }
 
-    // 自分がどっちか
+    const subNow = (await get(subRef)).val();
     const isP1 = session.p1Uid === uid;
     const consentKey = isP1 ? "p1Consent" : "p2Consent";
     const scoreKey = isP1 ? "scoreP1" : "scoreP2";
 
-    // 既に自分の回答済みなら何もしない（結果表示だけ）
-    const latestSub = (await get(subRef)).val();
-    if (latestSub?.[consentKey] !== null && latestSub?.[consentKey] !== undefined) return;
+    if (subNow?.[consentKey] !== null && subNow?.[consentKey] !== undefined) return;
 
-    const ok = await modalAsk("スコアをランキングに載せますか？", `あなたのスコア: ${myScore}\n（身内用：公開前提の改ざん対策は弱いです）`);
+    const ok = await modalAsk("スコアをランキングに載せますか？", `あなたのスコア: ${myScore}`);
     await update(subRef, { [consentKey]: ok, [scoreKey]: myScore });
-
-    // マルチの同意フロー
-    if (session.mode === "multi") {
-      const now = (await get(subRef)).val();
-      // 片方がOKを出したら、もう片方にも質問が来る（もう片方が次に開いた時/finished検知時に聞かれる想定）
-      // ここでは “両方の回答が揃ったら” hostが投稿するようにする
-      await update(subRef, { status: "pending" });
-    } else {
-      // ソロは即投稿
-      await postToLeaderboardIfNeeded({ uid, session, sub: (await get(subRef)).val() });
-    }
   }
 
-  async function postToLeaderboardIfNeeded({ uid, session, sub }) {
-    if (!sub || sub.status === "posted") return;
+  async function postToLeaderboardIfNeeded(session) {
+    if (!session?.sessionId) return;
     const sid = session.sessionId;
+    const sub = (await get(ref(db, PATHS.submissions(sid)))).val();
+    if (!sub || sub.status === "posted") return;
 
-    // 投稿条件
     if (session.mode === "solo") {
       if (sub.p1Consent !== true) {
         await update(ref(db, PATHS.submissions(sid)), { status: "rejected" });
         return;
       }
     } else {
-      // マルチは両方がtrueのときだけ投稿
-      if (sub.p1Consent !== true || sub.p2Consent !== true) {
-        // 片方でもfalseなら拒否
-        if (sub.p1Consent === false || sub.p2Consent === false) {
-          await update(ref(db, PATHS.submissions(sid)), { status: "rejected" });
-        }
+      if (sub.p1Consent === false || sub.p2Consent === false) {
+        await update(ref(db, PATHS.submissions(sid)), { status: "rejected" });
         return;
       }
+      if (sub.p1Consent !== true || sub.p2Consent !== true) return;
     }
 
-    // ここでは「最終スコア」を合計にする（同じスコア制でもOKなら合計/またはp1のスコアなど調整可能）
     const total = session.mode === "multi"
       ? ((sub.scoreP1 ?? 0) + (sub.scoreP2 ?? 0))
       : (sub.scoreP1 ?? 0);
 
-    // 名前取得
     const name1 = await getMyName(session.p1Uid);
     const name2 = session.p2Uid ? await getMyName(session.p2Uid) : "";
     const displayName = session.mode === "multi" ? `${name1}&${name2}` : name1;
 
-    // leaderboardTop を更新（上位10）
     const lbRef = ref(db, PATHS.leaderboardTop);
     const lbSnap = await get(lbRef);
     const arr = Array.isArray(lbSnap.val()) ? lbSnap.val() : [];
-
     arr.push({ name: displayName || "no-name", score: total, at: Date.now() });
     arr.sort((a,b)=> (b.score??0)-(a.score??0));
-    const top = arr.slice(0, 10);
+    await set(lbRef, arr.slice(0, 10));
 
-    await set(lbRef, top);
-    await update(ref(db, PATHS.submissions(sid)), { status: "posted", postedAt: Date.now() });
+    await update(ref(db, PATHS.submissions(sid)), { status: "posted", postedAt: Date.now(), postedScore: total, postedName: displayName });
   }
 
-  // ---------------- Host loop & reset logic ----------------
+  // ---------- Host loop + idle timeout ----------
   let hostRunning = false;
   let hostStop = null;
 
@@ -1156,8 +1076,6 @@
 
     hostRunning = true;
     const sim = createHostSim(session);
-
-    // init
     await set(ref(db, PATHS.sessionGame), sim.snapshot());
 
     const hz = 15;
@@ -1166,56 +1084,100 @@
       const s = (await get(ref(db, PATHS.sessionCurrent))).val();
       if (!s || s.state !== "playing") return;
 
+      // 60秒無操作 = リタイア扱い（p1/p2両方が無操作）
       const inputs = (await get(ref(db, `session/current/inputs`))).val() || {};
+      const now = Date.now();
+      const uids = [s.p1Uid, s.p2Uid].filter(Boolean);
+      const lastTimes = uids.map(u => inputs?.[u]?.t ?? 0);
+      const allIdle = uids.length > 0 && lastTimes.every(t => (now - t) >= 60000);
+      if (allIdle) {
+        await update(ref(db, PATHS.sessionCurrent), { state:"finished", finishedReason:"idle_timeout", updatedAt: serverTimestamp() });
+        return;
+      }
+
       sim.applyInputs(inputs);
       sim.step(intervalMs / 1000);
 
-      // 全員死亡でfinished
       if (sim.isAllDead()) {
         await update(ref(db, PATHS.sessionCurrent), { state:"finished", finishedReason:"all_dead", updatedAt: serverTimestamp() });
         return;
       }
+
       await set(ref(db, PATHS.sessionGame), sim.snapshot());
     }, intervalMs);
 
     hostStop = () => clearInterval(timer);
   }
 
-  async function hostResetFlowIfNeeded(uid, session) {
-    // hostだけがfinished->resetting->idleを進める
-    if (!session || session.hostUid !== uid) return;
-    if (session.state !== "finished") return;
+  // ---------- Auto cleanup when session is stale / no-one online ----------
+  async function maybeAutoCleanup(uid, session) {
+    if (!session || session.state === "idle") return;
 
-    // resetting
-    await update(ref(db, PATHS.sessionCurrent), { state:"resetting", updatedAt: serverTimestamp() });
+    // stateがあるのに host/p1 がいない（offline）なら cleanup を試みる
+    const leader = chooseLeaderUid(session);
+    const canCleanup = (uid === session.hostUid) || (uid === leader);
 
-    // プレイヤーがロビーに戻るまで待つ（プレイヤー2名だけを必須にする）
-    const wait = async () => {
-      const ss = (await get(ref(db, PATHS.sessionCurrent))).val();
-      if (!ss || ss.state !== "resetting") return false;
-      const cs = ss.clientState || {};
-      const need = [ss.p1Uid, ss.p2Uid].filter(Boolean);
-      return need.every(u => cs[u] === "lobby");
-    };
+    if (!canCleanup) return;
 
-    showAnn("データをリセットします", "全員がロビーに戻るまで待ってください");
-    const t0 = Date.now();
-    while (Date.now() - t0 < 20000) { // 20秒
-      if (await wait()) break;
-      await new Promise(r=>setTimeout(r, 400));
+    const hostOn = await isOnline(session.hostUid);
+    const p1On = await isOnline(session.p1Uid);
+    const p2On = session.p2Uid ? await isOnline(session.p2Uid) : false;
+
+    // recruiting/preparing/playing のときに、主要人物が全員オフラインなら消す
+    const anyImportantOnline = hostOn || p1On || p2On;
+
+    // finished/resetting で残骸になってる可能性もあるので、誰もいないなら消す
+    if (!anyImportantOnline) {
+      showAnn("セッションをリセットします", "参加者がいないため自動リセットします");
+      await remove(ref(db, PATHS.sessionCurrent));
+      await remove(ref(db, PATHS.sessionGame));
+      hideAnn();
+      return;
     }
 
-    // 全消去（idle）
+    // playingなのに gameデータが無い/古い場合も残骸扱い
+    if (session.state === "playing") {
+      const g = (await get(ref(db, PATHS.sessionGame))).val();
+      const tooOld = !g?.sentAt || (Date.now() - g.sentAt) > 15000;
+      if (tooOld) {
+        showAnn("セッションをリセットします", "ゲームデータが停止しているため自動リセットします");
+        await update(ref(db, PATHS.sessionCurrent), { state:"finished", finishedReason:"stale_game", updatedAt: serverTimestamp() });
+      }
+    }
+  }
+
+  // ---------- Reset flow ----------
+  async function hostResetFlowIfNeeded(uid, session) {
+    if (!session) return;
+    const leader = chooseLeaderUid(session);
+    const canReset = (uid === session.hostUid) || (uid === leader);
+    if (!canReset) return;
+
+    if (session.state !== "finished") return;
+
+    await update(ref(db, PATHS.sessionCurrent), { state:"resetting", updatedAt: serverTimestamp() });
+    showAnn("データをリセットします", "プレイヤーがロビーに戻るまで待ってください");
+
+    const t0 = Date.now();
+    while (Date.now() - t0 < 20000) {
+      const ss = (await get(ref(db, PATHS.sessionCurrent))).val();
+      if (!ss || ss.state !== "resetting") break;
+      const cs = ss.clientState || {};
+      const need = [ss.p1Uid, ss.p2Uid].filter(Boolean);
+      const ok = need.every(u => cs[u] === "lobby" || cs[u] === "offline");
+      if (ok) break;
+      await sleep(400);
+    }
+
     await remove(ref(db, PATHS.sessionCurrent));
     await remove(ref(db, PATHS.sessionGame));
     hideAnn();
   }
 
-  // ---------------- Main session UI binding ----------------
+  // ---------- Bind session UI ----------
   function bindLobbyUI(uid) {
     const sessionRef = ref(db, PATHS.sessionCurrent);
 
-    // watch button
     ui.watchBtn.onclick = async () => {
       const s = (await get(sessionRef)).val();
       if (s?.state === "playing") await setClientState(uid, "watching");
@@ -1276,9 +1238,7 @@
       const ready = s.ready || {};
       const ok1 = !!ready?.[p1];
       const ok2 = (s.mode === "solo") ? true : !!ready?.[p2];
-      if (ok1 && ok2) {
-        await update(sessionRef, { state:"playing", updatedAt: serverTimestamp() });
-      }
+      if (ok1 && ok2) await update(sessionRef, { state:"playing", updatedAt: serverTimestamp() });
     };
 
     ui.leaveBtn.onclick = async () => {
@@ -1297,20 +1257,18 @@
       await update(sessionRef, { state:"finished", finishedReason:"retire", updatedAt: serverTimestamp() });
     };
 
-    // session listener: UI state, recruiting join, etc
     onValue(sessionRef, async (snap) => {
       const s = snap.val() || { state:"idle" };
+      ui.sessionDebug.textContent = JSON.stringify(s, null, 2);
       ui.statusLine.textContent = `${s.state}${s.mode ? ` (${s.mode})` : ""}`;
 
-      // Always show debug
-      ui.sessionDebug.textContent = JSON.stringify(s, null, 2);
-
-      // Name gating
       const myName = await getMyName(uid);
       const nameOk = !!myName;
       ui.nameHint.textContent = nameOk ? `保存済み: ${myName}` : "名前を保存するとロビー操作できます";
 
-      // Busy gating
+      // ここがバグ修正ポイント：残骸セッションを自動修復する
+      await maybeAutoCleanup(uid, s);
+
       const busy = s.state !== "idle";
       ui.soloBtn.disabled = !nameOk || busy;
       ui.multiBtn.disabled = !nameOk || busy;
@@ -1319,43 +1277,36 @@
       else if (!busy) ui.playHint.textContent = "プレイ可能です（ソロ / マルチ）";
       else ui.playHint.textContent = "現在他の方がプレイ中です。観戦のみ可能です。";
 
-      // screen
       document.body.classList.toggle("playing", s.state === "playing");
+
       const isPlayer = s.p1Uid===uid || s.p2Uid===uid;
       const isHost = s.hostUid===uid;
 
-      ui.readyBtn.style.display = (isPlayer && s.state === "preparing") ? "" : "none";
-      ui.leaveBtn.style.display = (isPlayer && (s.state==="recruiting" || s.state==="preparing")) ? "" : "none";
-      ui.retireBtn.style.display = (isHost && s.state==="playing" && s.mode==="multi") ? "" : "none";
-
-      // role tag
       let role = "spectator";
       if (isHost) role = "host";
       if (isPlayer && !isHost) role = "player";
       ui.roleTag.textContent = `role:${role}`;
 
+      ui.readyBtn.style.display = (isPlayer && s.state === "preparing") ? "" : "none";
+      ui.leaveBtn.style.display = (isPlayer && (s.state==="recruiting" || s.state==="preparing")) ? "" : "none";
+      ui.retireBtn.style.display = (isHost && s.state==="playing" && s.mode==="multi") ? "" : "none";
+
       if (s.state==="idle") { ui.screenTitle.textContent="ロビー"; ui.screenSub.textContent=""; hideAnn(); }
       if (s.state==="recruiting") { ui.screenTitle.textContent="準備中"; ui.screenSub.textContent="マルチ参加者を募集しています"; hideAnn(); }
       if (s.state==="preparing") { ui.screenTitle.textContent="準備中"; ui.screenSub.textContent="準備完了を押すと開始します"; hideAnn(); }
       if (s.state==="playing") { ui.screenTitle.textContent="プレイ中"; ui.screenSub.textContent="A/D移動・Space発射"; hideAnn(); }
-      if (s.state==="resetting") { ui.screenTitle.textContent="リセット中"; ui.screenSub.textContent=""; showAnn("データをリセットします", "全員がロビーに戻るまで待ってください"); }
-      if (s.state==="finished") { ui.screenTitle.textContent="終了"; ui.screenSub.textContent="ロビーに戻ります"; showAnn("ゲーム終了", "スコア送信確認中…"); }
+      if (s.state==="resetting") { ui.screenTitle.textContent="リセット中"; ui.screenSub.textContent=""; showAnn("データをリセットします", "少々お待ちください"); }
+      if (s.state==="finished") { ui.screenTitle.textContent="終了"; ui.screenSub.textContent="ロビーに戻ります"; showAnn("ゲーム終了", `理由: ${s.finishedReason||"?"}\nスコア送信確認中…`); }
 
-      // playing中のclientState
-      if (s.state==="playing") {
-        await setClientState(uid, isPlayer ? "playing" : "watching");
-      } else if (!s || s.state==="idle" || s.state==="resetting") {
-        await setClientState(uid, "lobby");
-      }
+      if (s.state==="playing") await setClientState(uid, isPlayer ? "playing" : "watching");
+      if (!s || s.state==="idle" || s.state==="resetting") await setClientState(uid, "lobby");
 
-      // recruiting join prompt (non-player only)
+      // recruiting prompt
       if (s.state==="recruiting" && s.mode==="multi") {
         const already = (s.p1Uid===uid || s.p2Uid===uid);
         if (!already && !s.recruiting?.joinerUid) {
-          // modalでOK/NO
           const ok = await modalAsk("マルチに参加しますか？（早押し）", "最初にOKした1人だけ参加できます");
           if (!ok) return;
-
           const joinerRef = ref(db, PATHS.sessionRecruitingJoiner);
           const tx = await runTransaction(joinerRef, (cur) => (cur ? undefined : uid));
           if (!tx.committed) {
@@ -1363,12 +1314,10 @@
             setTimeout(hideAnn, 1200);
             return;
           }
-
           const now = (await get(sessionRef)).val();
           if (!now || now.state !== "recruiting") return;
-
           await update(sessionRef, {
-            state: "preparing",
+            state:"preparing",
             p2Uid: uid,
             ready: { ...(now.ready||{}), [uid]: false },
             clientState: { ...(now.clientState||{}), [uid]: "preparing" },
@@ -1377,28 +1326,23 @@
         }
       }
 
-      // host loop
       await startHostLoopIfNeeded(uid, s);
 
-      // finished -> score flow (players)
+      // finished: consent flow
       if (s.state==="finished") {
         const game = (await get(ref(db, PATHS.sessionGame))).val();
-        // 先に自分の同意
         await maybeSubmitScoreFlow({ uid, session: s, game });
 
-        // マルチの場合、両者が同意したら投稿（hostがやる）
-        if (s.mode==="multi" && s.hostUid===uid) {
-          const sub = (await get(ref(db, PATHS.submissions(s.sessionId)))).val();
-          await postToLeaderboardIfNeeded({ uid, session: s, sub });
-        }
+        // host(or leader) posts when ready
+        const leader = chooseLeaderUid(s);
+        if (uid === s.hostUid || uid === leader) await postToLeaderboardIfNeeded(s);
 
-        // host resets
         await hostResetFlowIfNeeded(uid, s);
       }
     });
   }
 
-  // ---------------- Game state subscription (draw) ----------------
+  // ---------- Subscribe & draw game state ----------
   function bindGameDraw(uid) {
     onValue(ref(db, PATHS.sessionGame), (snap) => {
       const g = snap.val();
@@ -1407,14 +1351,14 @@
     });
   }
 
-  // ---------------- Auth + Presence ----------------
+  // ---------- Presence bind ----------
   async function bindPresence(uid) {
     const presRef = ref(db, PATHS.presence(uid));
     await set(presRef, { online:true, lastSeen: serverTimestamp() });
     onDisconnect(presRef).set({ online:false, lastSeen: serverTimestamp() });
   }
 
-  // ---------------- Start ----------------
+  // ---------- Start ----------
   await signInAnonymously(auth);
 
   onAuthStateChanged(auth, async (user) => {
@@ -1429,11 +1373,9 @@
     bindLobbyUI(uid);
     bindGameDraw(uid);
 
-    // 初期clientState（名前画面）
     await setClientState(uid, "name");
     onDisconnect(ref(db, PATHS.sessionClientState(uid))).set("offline");
   });
-
 </script>
 </body>
 </html>

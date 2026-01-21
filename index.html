@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Inder Rooms (RTDB) - Single File Complete</title>
+  <title>Invader Rooms (RTDB) - Single File Complete (7min cleanup, no stale-game)</title>
   <style>
     :root { color-scheme: dark; }
     html, body { height: 100%; margin: 0; background:#0b0e14; color:#e8eefc; font-family: system-ui, -apple-system, Segoe UI, Roboto, "Noto Sans JP", sans-serif; }
@@ -131,7 +131,7 @@
           <div class="muted" style="margin-top:8px; line-height:1.5;">
             操作：<b>A/D</b> 移動、<b>Space</b> 発射（CD 3秒）<br/>
             Wave：30/40/90/140秒（以降ボス継続・激化）<br/>
-            終了：全員死亡 or ホストリタイア
+            終了：全員死亡 or ホストリタイア or 7分経過（強制終了）
           </div>
           <div class="row" style="margin-top:12px;">
             <button id="createSoloBtn">ソロ部屋を作る</button>
@@ -236,9 +236,10 @@
 
 <script type="module">
   import { initializeApp } from "https://www.gstatic.com/firebasejs/12.8.0/firebase-app.js";
-  import { getDatabase, ref, onValue, get, set, update, remove, runTransaction, serverTimestamp, onDisconnect, query, limitToLast, orderByChild } from "https://www.gstatic.com/firebasejs/12.8.0/firebase-database.js";
+  import { getDatabase, ref, onValue, get, set, update, remove, runTransaction, serverTimestamp, onDisconnect } from "https://www.gstatic.com/firebasejs/12.8.0/firebase-database.js";
   import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/12.8.0/firebase-auth.js";
 
+  // ---------------- Firebase config ----------------
   const firebaseConfig = {
     apiKey: "AIzaSyBePhUfYinZ02-1BWbZvzV3IBwoAYh-kxE",
     authDomain: "suisougaku-bdcc0.firebaseapp.com",
@@ -254,6 +255,7 @@
   const db = getDatabase(app);
   const auth = getAuth(app);
 
+  // ---------------- UI ----------------
   const $ = (q) => document.querySelector(q);
   const ui = {
     me: $("#me"),
@@ -317,6 +319,7 @@
 
   const sleep = (ms) => new Promise(r => setTimeout(r, ms));
   function uuidShort() { return Math.random().toString(16).slice(2, 10); }
+
   function showAnn(title, body) {
     ui.annTitle.textContent = title;
     ui.annBody.textContent = body;
@@ -374,12 +377,10 @@
     roomIndex: (roomId) => `rooms_index/${roomId}`,
 
     roomGame: (roomId) => `rooms/${roomId}/game`,
+    roomInputsRoot: (roomId) => `rooms/${roomId}/inputs`,
     roomInputs: (roomId, uid) => `rooms/${roomId}/inputs/${uid}`,
     roomReady: (roomId, uid) => `rooms/${roomId}/ready/${uid}`,
     roomRecruitJoiner: (roomId) => `rooms/${roomId}/recruiting/joinerUid`,
-    roomClientState: (roomId, uid) => `rooms/${roomId}/clientState/${uid}`,
-
-    submissions: (sid) => `submissions/${sid}`,
   };
 
   // ---------------- Presence ----------------
@@ -563,18 +564,20 @@
     const keys = { left:false, right:false, shoot:false };
     let bound = true;
 
-    window.addEventListener("keydown", (e) => {
+    const down = (e) => {
       if (!bound) return;
       if (e.code === "KeyA") keys.left = true;
       if (e.code === "KeyD") keys.right = true;
       if (e.code === "Space") { keys.shoot = true; e.preventDefault(); }
-    });
-    window.addEventListener("keyup", (e) => {
+    };
+    const up = (e) => {
       if (!bound) return;
       if (e.code === "KeyA") keys.left = false;
       if (e.code === "KeyD") keys.right = false;
       if (e.code === "Space") { keys.shoot = false; e.preventDefault(); }
-    });
+    };
+    window.addEventListener("keydown", down);
+    window.addEventListener("keyup", up);
 
     const timer = setInterval(() => {
       if (!bound) return;
@@ -583,10 +586,15 @@
       set(ref(db, PATHS.roomInputs(roomId, uid)), { ...keys, t: Date.now() });
     }, 50);
 
-    return () => { bound = false; clearInterval(timer); };
+    return () => {
+      bound = false;
+      clearInterval(timer);
+      window.removeEventListener("keydown", down);
+      window.removeEventListener("keyup", up);
+    };
   }
 
-  // ---------------- Game simulation (same as before, room-scoped) ----------------
+  // ---------------- Game simulation ----------------
   const WAVE_DUR = [30, 40, 90, 140];
   const SHOOT_CD = 3.0;
   const SCORE = { A: 60, B: 120, C: 200, D: 0, E: 300, BOSS_HIT: 10, BOSS_KILL: 5000 };
@@ -1109,10 +1117,9 @@
     return { step, snapshot, applyInputs, isAllDead };
   }
 
-  // ---------------- Room lifecycle ----------------
-  // room: { roomId, state, mode, hostUid, p1Uid, p2Uid, recruiting, ready, createdAt, updatedAt }
-  // state: idle|recruiting|preparing|playing|finished
+  // ---------------- Room system ----------------
   const MAX_ROOMS = 5;
+  const ROOM_MAX_PLAY_MS = 7 * 60 * 1000; // 7 minutes
 
   let uid = null;
   let myName = "";
@@ -1120,6 +1127,7 @@
   let currentRoomUnsub = null;
   let currentGameUnsub = null;
   let stopInputSender = null;
+  let lastRoomCache = null;
 
   async function countRooms() {
     const snap = await get(ref(db, PATHS.roomsIndex));
@@ -1131,26 +1139,12 @@
     if (st === "recruiting") return "募集中";
     if (st === "preparing") return "準備中";
     if (st === "playing") return "プレイ中";
-    if (st === "finished") return "終了処理";
+    if (st === "finished") return "終了";
     return "待機";
-  }
-
-  function canJoinAsPlayer(room) {
-    if (!room) return false;
-    if (room.state !== "recruiting" && room.state !== "preparing") return false;
-    if (room.mode !== "multi") return false;
-    return !room.p2Uid; // empty slot
   }
 
   function isPlayer(room) {
     return room?.p1Uid === uid || room?.p2Uid === uid;
-  }
-
-  function myColor(room) {
-    if (!room) return null;
-    if (room.p1Uid === uid) return "BLUE";
-    if (room.p2Uid === uid) return "RED";
-    return null;
   }
 
   async function createRoom(mode) {
@@ -1159,6 +1153,7 @@
       ui.createHint.textContent = "部屋数が上限（5）です。誰かが部屋を削除してから作成してください。";
       return;
     }
+
     const roomId = `room_${Date.now()}_${uuidShort()}`;
     const room = {
       roomId,
@@ -1172,10 +1167,13 @@
       ready: { [uid]: false },
       createdAt: Date.now(),
       updatedAt: Date.now(),
+      startedAt: 0
     };
+
     await set(ref(db, PATHS.room(roomId)), room);
-    await set(ref(db, PATHS.roomIndex(roomId)), { roomId, state: room.state, mode, hostName: myName, createdAt: Date.now() });
-    await enterRoom(roomId, "player");
+    await set(ref(db, PATHS.roomIndex(roomId)), { roomId, state: room.state, mode, hostName: myName, createdAt: Date.now(), startedAt: 0 });
+
+    await enterRoom(roomId);
   }
 
   async function deleteRoom(roomId) {
@@ -1183,16 +1181,27 @@
     await remove(ref(db, PATHS.roomIndex(roomId)));
   }
 
-  async function enterRoom(roomId, as = "watch") {
-    // clean old
-    await leaveRoom(false);
+  async function leaveRoom(goLobby = true) {
+    if (stopInputSender) { stopInputSender(); stopInputSender = null; }
+    if (currentRoomUnsub) { currentRoomUnsub(); currentRoomUnsub = null; }
+    if (currentGameUnsub) { currentGameUnsub(); currentGameUnsub = null; }
 
+    currentRoomId = null;
+    ui.roomTag.style.display = "none";
+    ui.roomTag.textContent = "room:-";
+    ui.readyBtn.style.display = "none";
+    ui.retireBtn.style.display = "none";
+
+    if (goLobby) setScreen("lobby");
+  }
+
+  async function enterRoom(roomId) {
+    await leaveRoom(false);
     currentRoomId = roomId;
     ui.roomTag.style.display = "";
     ui.roomTag.textContent = `room:${roomId.slice(-6)}`;
     setScreen("game");
 
-    // input sender bound to room
     stopInputSender = bindInputSenderForRoom(uid, roomId, () => {
       const room = lastRoomCache;
       return room?.state === "playing" && isPlayer(room);
@@ -1201,189 +1210,7 @@
     subscribeRoom(roomId);
   }
 
-  async function leaveRoom(goLobby = true) {
-    if (stopInputSender) { stopInputSender(); stopInputSender = null; }
-
-    if (currentRoomUnsub) { currentRoomUnsub(); currentRoomUnsub = null; }
-    if (currentGameUnsub) { currentGameUnsub(); currentGameUnsub = null; }
-
-    currentRoomId = null;
-    ui.roomTag.style.display = "none";
-    ui.roomTag.textContent = "room:-";
-
-    ui.readyBtn.style.display = "none";
-    ui.retireBtn.style.display = "none";
-
-    if (goLobby) setScreen("lobby");
-  }
-
-  // ---------------- Room subscriptions ----------------
-  let lastRoomCache = null;
-  let hostLoopTimer = null;
-
-  function subscribeRoom(roomId) {
-    const roomRef = ref(db, PATHS.room(roomId));
-    const gameRef = ref(db, PATHS.roomGame(roomId));
-
-    currentRoomUnsub = onValue(roomRef, async (snap) => {
-      const room = snap.val();
-      lastRoomCache = room;
-
-      if (!room) {
-        // room deleted
-        drawIdle("部屋が削除されました");
-        await leaveRoom(true);
-        return;
-      }
-
-      ui.modeTag.textContent = `mode:${room.mode}`;
-      ui.stateTag.textContent = `state:${room.state}`;
-      ui.statusLine.textContent = `in ${roomId.slice(-6)} ${room.state}`;
-
-      const player = isPlayer(room);
-      const host = room.hostUid === uid;
-      ui.retireBtn.style.display = (host && room.state === "playing") ? "" : "none";
-      ui.readyBtn.style.display = (player && room.state === "preparing") ? "" : "none";
-
-      // preparing/recruiting prompt (multi)
-      if (room.state === "recruiting" && room.mode === "multi") {
-        if (!player && !room.recruiting?.joinerUid && !room.p2Uid) {
-          // show prompt once per room open (simple: confirm modal)
-          const ok = await modalAsk("この部屋のマルチに参加しますか？", "最初にOKした1人だけ参加できます");
-          if (!ok) return;
-
-          // transaction to claim joiner
-          const joinerRef = ref(db, PATHS.roomRecruitJoiner(roomId));
-          const tx = await runTransaction(joinerRef, (cur) => (cur ? undefined : uid));
-          if (!tx.committed) {
-            showAnn("間に合いませんでした", "他の人が先に参加しました");
-            setTimeout(hideAnn, 1200);
-            return;
-          }
-
-          // set p2
-          const now = (await get(roomRef)).val();
-          if (!now || now.state !== "recruiting") return;
-
-          await update(roomRef, {
-            state: "preparing",
-            p2Uid: uid,
-            ready: { ...(now.ready||{}), [uid]: false },
-            updatedAt: Date.now(),
-          });
-          await update(ref(db, PATHS.roomIndex(roomId)), { state: "preparing" });
-        }
-      }
-
-      // auto cleanup if host/p1/p2 offline and room is stuck
-      await maybeRoomAutoCleanup(roomId, room);
-
-      // host loop
-      await startHostLoopIfNeeded(roomId, room);
-
-      // finished -> delete automatically (admin skip score; here we keep it simple: always delete after a short delay)
-      if (room.state === "finished") {
-        showAnn("ゲーム終了", `理由: ${room.finishedReason || "?"}\n部屋を閉じます…`);
-        // delete room after 2 sec
-        setTimeout(async () => {
-          await deleteRoom(roomId);
-          hideAnn();
-          await leaveRoom(true);
-        }, 2000);
-      }
-    });
-
-    currentGameUnsub = onValue(gameRef, (snap) => {
-      const g = snap.val();
-      if (!g) {
-        drawIdle("準備中 / 観戦待機中");
-        return;
-      }
-      drawState(g, uid);
-    });
-  }
-
-  async function maybeRoomAutoCleanup(roomId, room) {
-    // if nobody important online, delete room
-    const hostOn = await isOnline(room.hostUid);
-    const p1On = await isOnline(room.p1Uid);
-    const p2On = room.p2Uid ? await isOnline(room.p2Uid) : false;
-    const anyOn = hostOn || p1On || p2On;
-
-    if (!anyOn) {
-      await deleteRoom(roomId);
-      return;
-    }
-
-    // playing but game stale => finish
-    if (room.state === "playing") {
-      const g = (await get(ref(db, PATHS.roomGame(roomId)))).val();
-      const tooOld = !g?.sentAt || (Date.now() - g.sentAt) > 15000;
-      if (tooOld) {
-        await update(ref(db, PATHS.room(roomId)), { state: "finished", finishedReason: "stale_game", updatedAt: Date.now() });
-        await update(ref(db, PATHS.roomIndex(roomId)), { state: "finished" });
-      }
-    }
-  }
-
-  // ---------------- Host loop per room ----------------
-  const activeHostLoops = new Map(); // roomId -> {running, timer}
-
-  async function startHostLoopIfNeeded(roomId, room) {
-    const isHost = room.hostUid === uid;
-    const isPlaying = room.state === "playing";
-
-    const key = roomId;
-    const cur = activeHostLoops.get(key);
-
-    if (cur?.running) {
-      if (!isHost || !isPlaying) {
-        clearInterval(cur.timer);
-        activeHostLoops.delete(key);
-      }
-      return;
-    }
-
-    if (!isHost || !isPlaying) return;
-
-    const sim = createHostSim(room);
-    await set(ref(db, PATHS.roomGame(roomId)), sim.snapshot());
-
-    const hz = 15;
-    const intervalMs = Math.floor(1000 / hz);
-
-    const timer = setInterval(async () => {
-      const roomNow = (await get(ref(db, PATHS.room(roomId)))).val();
-      if (!roomNow || roomNow.state !== "playing") return;
-
-      const inputs = (await get(ref(db, `rooms/${roomId}/inputs`))).val() || {};
-      // idle timeout: both players idle
-      const now = Date.now();
-      const uids = [roomNow.p1Uid, roomNow.p2Uid].filter(Boolean);
-      const lastTimes = uids.map(u => inputs?.[u]?.t ?? 0);
-      const allIdle = uids.length > 0 && lastTimes.every(t => (now - t) >= 60000);
-      if (allIdle) {
-        await update(ref(db, PATHS.room(roomId)), { state: "finished", finishedReason: "idle_timeout", updatedAt: Date.now() });
-        await update(ref(db, PATHS.roomIndex(roomId)), { state: "finished" });
-        return;
-      }
-
-      sim.applyInputs(inputs);
-      sim.step(intervalMs / 1000);
-
-      if (sim.isAllDead()) {
-        await update(ref(db, PATHS.room(roomId)), { state: "finished", finishedReason: "all_dead", updatedAt: Date.now() });
-        await update(ref(db, PATHS.roomIndex(roomId)), { state: "finished" });
-        return;
-      }
-
-      await set(ref(db, PATHS.roomGame(roomId)), sim.snapshot());
-    }, intervalMs);
-
-    activeHostLoops.set(key, { running: true, timer });
-  }
-
-  // ---------------- Rooms list (lobby) ----------------
+  // ---------------- Rooms list ----------------
   function bindRoomsList() {
     onValue(ref(db, PATHS.roomsIndex), (snap) => {
       const rooms = snap.val() || {};
@@ -1410,7 +1237,8 @@
         `;
         const meta = document.createElement("div");
         meta.className = "roomMeta";
-        meta.textContent = `作成: ${new Date(r.createdAt || Date.now()).toLocaleTimeString()}`;
+        const sa = r.startedAt ? ` / started: ${new Date(r.startedAt).toLocaleTimeString()}` : "";
+        meta.textContent = `created: ${new Date(r.createdAt || Date.now()).toLocaleTimeString()}${sa}`;
 
         left.appendChild(top);
         left.appendChild(meta);
@@ -1420,18 +1248,13 @@
 
         const joinBtn = document.createElement("button");
         joinBtn.className = "secondary small";
-        joinBtn.textContent = "参加/入室";
-        joinBtn.onclick = async () => {
-          // enter room; if not player, you'll get prompt in recruiting (multi) or just watch/standby
-          await enterRoom(r.roomId, "auto");
-        };
+        joinBtn.textContent = "入室";
+        joinBtn.onclick = async () => { await enterRoom(r.roomId); };
 
         const watchBtn = document.createElement("button");
         watchBtn.className = "ghost small";
         watchBtn.textContent = "観戦";
-        watchBtn.onclick = async () => {
-          await enterRoom(r.roomId, "watch");
-        };
+        watchBtn.onclick = async () => { await enterRoom(r.roomId); };
 
         btns.appendChild(joinBtn);
         btns.appendChild(watchBtn);
@@ -1447,10 +1270,8 @@
 
           const adminReset = document.createElement("button");
           adminReset.className = "danger small";
-          adminReset.textContent = "運営:強制リセット";
-          adminReset.onclick = async () => {
-            await deleteRoom(r.roomId);
-          };
+          adminReset.textContent = "運営:削除";
+          adminReset.onclick = async () => { await deleteRoom(r.roomId); };
 
           btns.appendChild(adminKill);
           btns.appendChild(adminReset);
@@ -1458,7 +1279,6 @@
 
         div.appendChild(left);
         div.appendChild(btns);
-
         ui.roomsList.appendChild(div);
       }
     });
@@ -1468,7 +1288,171 @@
     return String(s).replace(/[&<>"']/g, (m) => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;" }[m]));
   }
 
-  // ---------------- Main ----------------
+  // ---------------- Subscribe room + host loop ----------------
+  const activeHostLoops = new Map(); // roomId -> timer
+
+  function subscribeRoom(roomId) {
+    const roomRef = ref(db, PATHS.room(roomId));
+    const gameRef = ref(db, PATHS.roomGame(roomId));
+
+    currentRoomUnsub = onValue(roomRef, async (snap) => {
+      const room = snap.val();
+      lastRoomCache = room;
+
+      if (!room) {
+        drawIdle("部屋が削除されました");
+        await leaveRoom(true);
+        return;
+      }
+
+      ui.modeTag.textContent = `mode:${room.mode}`;
+      ui.stateTag.textContent = `state:${room.state}`;
+      ui.statusLine.textContent = `in ${roomId.slice(-6)} ${room.state}`;
+
+      const player = isPlayer(room);
+      const host = room.hostUid === uid;
+      ui.retireBtn.style.display = (host && room.state === "playing") ? "" : "none";
+      ui.readyBtn.style.display = (player && room.state === "preparing") ? "" : "none";
+
+      // recruiting prompt
+      if (room.state === "recruiting" && room.mode === "multi") {
+        if (!player && !room.recruiting?.joinerUid && !room.p2Uid) {
+          const ok = await modalAsk("この部屋のマルチに参加しますか？", "最初にOKした1人だけ参加できます");
+          if (ok) {
+            const joinerRef = ref(db, PATHS.roomRecruitJoiner(roomId));
+            const tx = await runTransaction(joinerRef, (cur) => (cur ? undefined : uid));
+            if (!tx.committed) {
+              showAnn("間に合いませんでした", "他の人が先に参加しました");
+              setTimeout(hideAnn, 1200);
+              return;
+            }
+            const now = (await get(roomRef)).val();
+            if (!now || now.state !== "recruiting") return;
+            await update(roomRef, {
+              state: "preparing",
+              p2Uid: uid,
+              ready: { ...(now.ready||{}), [uid]: false },
+              updatedAt: Date.now(),
+            });
+            await update(ref(db, PATHS.roomIndex(roomId)), { state: "preparing" });
+          }
+        }
+      }
+
+      // auto cleanup if nobody online (NO stale-game check here!)
+      await maybeRoomAutoCleanup(roomId, room);
+
+      // start host loop if needed
+      await startHostLoopIfNeeded(roomId, room);
+
+      // room deletion timing: delete on finished, OR 7 min from startedAt (handled by host loop + also here as backup)
+      if (room.state === "playing" && room.startedAt) {
+        if ((Date.now() - room.startedAt) >= ROOM_MAX_PLAY_MS) {
+          await update(roomRef, { state: "finished", finishedReason: "time_limit_7min", updatedAt: Date.now() }).catch(()=>{});
+          await update(ref(db, PATHS.roomIndex(roomId)), { state: "finished" }).catch(()=>{});
+        }
+      }
+
+      if (room.state === "finished") {
+        showAnn("ゲーム終了", `理由: ${room.finishedReason || "?"}\n部屋を閉じます…`);
+        // delete after short delay
+        setTimeout(async () => {
+          await deleteRoom(roomId);
+          hideAnn();
+          await leaveRoom(true);
+        }, 1200);
+      }
+    });
+
+    currentGameUnsub = onValue(gameRef, (snap) => {
+      const g = snap.val();
+      if (!g) { drawIdle("準備中 / 観戦待機中"); return; }
+      drawState(g, uid);
+    });
+  }
+
+  async function maybeRoomAutoCleanup(roomId, room) {
+    // if nobody important online -> delete room
+    const hostOn = await isOnline(room.hostUid);
+    const p1On = await isOnline(room.p1Uid);
+    const p2On = room.p2Uid ? await isOnline(room.p2Uid) : false;
+    const anyOn = hostOn || p1On || p2On;
+
+    if (!anyOn) {
+      await deleteRoom(roomId);
+      return;
+    }
+    // NOTE: stale-game check removed intentionally (your request).
+  }
+
+  async function startHostLoopIfNeeded(roomId, room) {
+    const isHost = room.hostUid === uid;
+    const isPlaying = room.state === "playing";
+    const existing = activeHostLoops.get(roomId);
+
+    if (existing) {
+      if (!isHost || !isPlaying) {
+        clearInterval(existing);
+        activeHostLoops.delete(roomId);
+      }
+      return;
+    }
+    if (!isHost || !isPlaying) return;
+
+    const sim = createHostSim(room);
+    await set(ref(db, PATHS.roomGame(roomId)), sim.snapshot());
+
+    const hz = 15;
+    const intervalMs = Math.floor(1000 / hz);
+
+    const timer = setInterval(async () => {
+      const roomNow = (await get(ref(db, PATHS.room(roomId)))).val();
+      if (!roomNow) {
+        clearInterval(timer);
+        activeHostLoops.delete(roomId);
+        return;
+      }
+      if (roomNow.state !== "playing") return;
+
+      // 7 minutes from startedAt => finish
+      if (roomNow.startedAt && (Date.now() - roomNow.startedAt) >= ROOM_MAX_PLAY_MS) {
+        await update(ref(db, PATHS.room(roomId)), { state: "finished", finishedReason: "time_limit_7min", updatedAt: Date.now() });
+        await update(ref(db, PATHS.roomIndex(roomId)), { state: "finished" });
+        return;
+      }
+
+      // 60sec idle => finish (all players idle)
+      const inputs = (await get(ref(db, PATHS.roomInputsRoot(roomId)))).val() || {};
+      const now = Date.now();
+      const uids = [roomNow.p1Uid, roomNow.p2Uid].filter(Boolean);
+      const lastTimes = uids.map(u => inputs?.[u]?.t ?? 0);
+      const allIdle = uids.length > 0 && lastTimes.every(t => (now - t) >= 60000);
+      if (allIdle) {
+        await update(ref(db, PATHS.room(roomId)), { state: "finished", finishedReason: "idle_timeout", updatedAt: Date.now() });
+        await update(ref(db, PATHS.roomIndex(roomId)), { state: "finished" });
+        return;
+      }
+
+      sim.applyInputs(inputs);
+      sim.step(intervalMs / 1000);
+
+      if (sim.isAllDead()) {
+        await update(ref(db, PATHS.room(roomId)), { state: "finished", finishedReason: "all_dead", updatedAt: Date.now() });
+        await update(ref(db, PATHS.roomIndex(roomId)), { state: "finished" });
+        return;
+      }
+
+      await set(ref(db, PATHS.roomGame(roomId)), sim.snapshot());
+    }, intervalMs);
+
+    activeHostLoops.set(roomId, timer);
+  }
+
+  // ---------------- Lobby actions ----------------
+  let uid = null;
+  let myName = "";
+
+  // ---------------- Boot ----------------
   await signInAnonymously(auth);
 
   onAuthStateChanged(auth, async (user) => {
@@ -1480,7 +1464,6 @@
     bindLeaderboard();
     bindRoomsList();
 
-    // name decide screen
     myName = await getMyName(uid);
     if (!myName) {
       setScreen("name");
@@ -1505,9 +1488,11 @@
     };
 
     ui.createSoloBtn.onclick = async () => {
+      if (!myName) { alert("名前を先に決定してください"); return; }
       await createRoom("solo");
     };
     ui.createMultiBtn.onclick = async () => {
+      if (!myName) { alert("名前を先に決定してください"); return; }
       await createRoom("multi");
     };
 
@@ -1529,8 +1514,9 @@
       const ok2 = (room.mode === "solo") ? true : !!ready?.[room.p2Uid];
 
       if (ok1 && ok2) {
-        await update(roomRef, { state: "playing", updatedAt: Date.now() });
-        await update(ref(db, PATHS.roomIndex(currentRoomId)), { state: "playing" });
+        const now = Date.now();
+        await update(roomRef, { state: "playing", startedAt: now, updatedAt: now });  // ★ startedAt set
+        await update(ref(db, PATHS.roomIndex(currentRoomId)), { state: "playing", startedAt: now });
       }
     };
 

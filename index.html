@@ -3,102 +3,106 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Invader (RTDB) - Single File Complete</title>
+  <title>Invader Rooms (RTDB) - Single File Complete</title>
   <style>
     :root { color-scheme: dark; }
     html, body { height: 100%; margin: 0; background:#0b0e14; color:#e8eefc; font-family: system-ui, -apple-system, Segoe UI, Roboto, "Noto Sans JP", sans-serif; }
+
+    #app { display:grid; grid-template-rows:auto 1fr; height:100%; }
+    header { padding:10px 12px; display:flex; gap:12px; align-items:center; border-bottom:1px solid #1f2a3a; }
+    header b { font-weight: 900; letter-spacing:.2px; }
+    small.mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; color:#a8b3c7; }
+    .tag { padding:2px 8px; border-radius: 999px; border:1px solid #1f2a3a; background:#0b1220; color:#a8b3c7; font-size:12px; }
+    #statusLine { margin-left:auto; color:#a8b3c7; }
+
+    button { background:#2b69ff; color:white; border:0; padding:10px 12px; border-radius:12px; cursor:pointer; font-weight:800; }
+    button.secondary { background:#223047; }
+    button.danger { background:#b42318; }
+    button.ghost { background:transparent; border:1px solid #1f2a3a; color:#a8b3c7; }
+    button.small { padding:6px 10px; border-radius:10px; font-weight:700; font-size:12px; }
+    button[disabled] { opacity:.45; cursor:not-allowed; }
+
+    input { width: 100%; box-sizing:border-box; padding:12px 12px; border-radius:12px; border:1px solid #26344a; background:#0b1220; color:#e8eefc; font-size:16px; }
+    .muted { color:#a8b3c7; }
+    .row { display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
+    .col { display:flex; flex-direction:column; gap:10px; }
+
+    .card { border:1px solid #1f2a3a; border-radius:16px; padding:14px; background:#0e1420; }
+    .card.thin { background: rgba(14,20,32,.45); border-color: rgba(31,42,58,.55); backdrop-filter: blur(6px); }
 
     /* screens */
     .screen { display:none; height:100%; }
     .screen.active { display:block; }
 
-    /* global */
-    #app { display:grid; grid-template-rows:auto 1fr; height:100%; }
-    header { padding:10px 12px; display:flex; gap:12px; align-items:center; border-bottom:1px solid #1f2a3a; }
-    header b { font-weight: 800; letter-spacing: .2px; }
-    #statusLine { margin-left:auto; color:#a8b3c7; }
-    small.mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; color:#a8b3c7; }
-    .tag { padding:2px 6px; border-radius: 999px; border:1px solid #1f2a3a; background:#0b1220; color:#a8b3c7; font-size:12px; }
-
-    button { background:#2b69ff; color:white; border:0; padding:10px 12px; border-radius:10px; cursor:pointer; font-weight:700; }
-    button.secondary { background:#223047; }
-    button.danger { background:#b42318; }
-    button.ghost { background:transparent; border:1px solid #1f2a3a; color:#a8b3c7; }
-    button[disabled] { opacity:.45; cursor:not-allowed; }
-
-    input { width: 100%; box-sizing:border-box; padding:12px 12px; border-radius:10px; border:1px solid #26344a; background:#0b1220; color:#e8eefc; font-size:16px; }
-    .muted { color:#a8b3c7; }
-    .row { display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
-
-    /* cards */
-    .card { border:1px solid #1f2a3a; border-radius:14px; padding:14px; background:#0e1420; }
-    .card.thin { background: rgba(14,20,32,.45); border-color: rgba(31,42,58,.55); backdrop-filter: blur(6px); }
-
     /* name screen */
     #nameScreen .wrap { height:100%; display:flex; align-items:center; justify-content:center; padding:18px; }
     #nameScreen .panel { width:min(520px, 92vw); }
     #nameScreen h1 { margin:0 0 6px 0; font-size: 26px; }
-    #nameScreen p { margin:0 0 12px 0; }
 
-    /* lobby screen */
-    #lobbyScreen { height:100%; }
-    #lobbyMain { display:grid; grid-template-columns: 1fr 340px; gap:14px; padding:14px; min-height:0; height:100%; box-sizing:border-box; }
-    #lobbyLeft { min-height:0; }
-    #lobbyLeft .hero { padding:18px; }
-    #lobbyLeft h2 { margin:0 0 10px 0; font-size:20px; }
-    #lobbyLeft .desc { line-height:1.5; }
-    #actions { margin-top: 12px; display:flex; gap:10px; flex-wrap:wrap; }
-    #lobbyRight { min-height:0; display:flex; flex-direction:column; gap:10px; }
-    #lbCard { flex: 1; min-height: 0; overflow:auto; }
-    #lbCard h3 { margin:0 0 10px 0; font-size:14px; letter-spacing:.3px; text-transform:uppercase; color:#a8b3c7; }
-    #leaderboard { font-size: 14px; }
-    #adminMini { display:flex; gap:8px; align-items:center; }
-    #adminMini input { padding:8px 10px; border-radius:10px; font-size:13px; }
-    #adminPanel { display:none; }
-    #adminPanel.active { display:block; }
-    #adminPanel .row { justify-content:flex-start; }
+    /* lobby */
+    #lobbyMain { height:100%; box-sizing:border-box; padding:14px; display:grid; grid-template-columns: 340px 1fr 320px; gap:14px; min-height:0; }
+    #leftCol, #midCol, #rightCol { min-height:0; }
+    #roomsList { overflow:auto; max-height: calc(100vh - 170px); }
+    .roomRow {
+      display:grid; grid-template-columns: 1fr auto; gap:10px;
+      border:1px solid rgba(31,42,58,.7);
+      border-radius:14px;
+      padding:10px 10px;
+      background: rgba(11,18,32,.55);
+      margin-bottom:10px;
+    }
+    .roomTop { display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
+    .roomMeta { font-size:12px; color:#a8b3c7; margin-top:4px; }
+    .roomBtns { display:flex; gap:8px; justify-content:flex-end; align-items:center; flex-wrap:wrap; }
 
-    /* game screen */
-    #gameScreen { height:100%; }
+    /* game */
     #gameWrap { height:100%; display:flex; flex-direction:column; }
-    #canvasWrap { flex: 1; min-height:0; position:relative; }
+    #gameTopBar {
+      padding:10px 12px; border-bottom:1px solid #1f2a3a;
+      display:flex; align-items:center; gap:10px;
+    }
+    #gameTopBar .spacer { flex:1; }
+    #canvasWrap { flex:1; min-height:0; position:relative; }
     canvas { width:100%; height:100%; display:block; background:#05070b; }
+
     #hud {
       position:absolute; left:10px; top:10px;
       background: rgba(10,14,22,.72);
       border:1px solid #1f2a3a;
       padding:10px 12px;
-      border-radius:14px;
+      border-radius:16px;
       font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
       color:#e8eefc;
-      min-width: 280px;
+      min-width: 300px;
     }
-    #hud .muted { font-size: 12px; }
-    #bossBarHint { position:absolute; top:10px; left:50%; transform:translateX(-50%); width:min(560px, 92vw); }
-
-    /* overlays */
     #ann { position:absolute; inset:0; display:none; align-items:center; justify-content:center; background: rgba(0,0,0,.60); }
     #ann .card { width:min(560px, 92vw); }
+
+    /* modal */
     #modal { position:fixed; inset:0; display:none; align-items:center; justify-content:center; background: rgba(0,0,0,.60); z-index: 50; }
     #modal .card { width:min(560px, 92vw); }
     #modal .row { justify-content:flex-end; }
 
-    /* top controls (game) */
-    #gameTopBar {
-      padding:10px 12px; border-bottom:1px solid #1f2a3a;
-      display:flex; align-items:center; gap:10px;
+    /* subtle star bg (lobby) */
+    #stars {
+      position: fixed; inset: 0; z-index: -1;
+      background:
+        radial-gradient(circle at 10% 20%, rgba(255,255,255,.10), transparent 40%),
+        radial-gradient(circle at 70% 30%, rgba(255,255,255,.08), transparent 40%),
+        radial-gradient(circle at 40% 80%, rgba(255,255,255,.06), transparent 40%),
+        linear-gradient(#070a10, #0b0e14);
+      filter: saturate(1.1);
     }
-    #gameTopBar .spacer { flex: 1; }
-    #youTag { font-weight:800; }
   </style>
 </head>
 <body>
+<div id="stars"></div>
 <div id="app">
   <header>
-    <b>Invader</b>
+    <b>Invader Rooms</b>
     <small class="mono" id="me"></small>
-    <span class="tag" id="roleTag">role:-</span>
     <span class="tag" id="adminTag" style="display:none;">ADMIN</span>
+    <span class="tag" id="roomTag" style="display:none;">room:-</span>
     <div id="statusLine"></div>
   </header>
 
@@ -107,7 +111,7 @@
     <div class="wrap">
       <div class="panel card">
         <h1>名前を入力</h1>
-        <p class="muted">最初に1回だけ必要です（後で変更可）。</p>
+        <p class="muted" style="margin:0 0 12px 0;">最初に1回だけ必要です（後で変更可）。</p>
         <input id="nameInput" placeholder="表示名（20文字まで）" maxlength="20" />
         <div class="row" style="margin-top:12px; justify-content:flex-end;">
           <button id="saveNameBtn">決定</button>
@@ -120,63 +124,66 @@
   <!-- Lobby screen -->
   <section id="lobbyScreen" class="screen">
     <div id="lobbyMain">
-      <div id="lobbyLeft">
-        <div class="card hero">
-          <h2>ロビー</h2>
-          <div class="desc muted">
-            操作：<b>A/D</b> 左右移動、<b>Space</b> 発射（クールダウン3秒）<br/>
-            Wave：30s / 40s / 90s / 140s（以降はボス継続・激化）<br/>
-            終了：<b>全員死亡</b> または <b>ホストのリタイア</b>。<br/>
-            観戦（感染）：プレイ中は画面を見るだけです。
+      <!-- left -->
+      <div id="leftCol" class="col">
+        <div class="card">
+          <div style="font-weight:900; font-size:18px;">ロビー</div>
+          <div class="muted" style="margin-top:8px; line-height:1.5;">
+            操作：<b>A/D</b> 移動、<b>Space</b> 発射（CD 3秒）<br/>
+            Wave：30/40/90/140秒（以降ボス継続・激化）<br/>
+            終了：全員死亡 or ホストリタイア
           </div>
-
-          <div id="actions">
-            <button id="soloBtn">ソロ</button>
-            <button id="multiBtn">マルチ</button>
-            <button id="watchBtn" class="secondary">観戦（感染）</button>
+          <div class="row" style="margin-top:12px;">
+            <button id="createSoloBtn">ソロ部屋を作る</button>
+            <button id="createMultiBtn">マルチ部屋を作る</button>
           </div>
+          <div class="muted" id="createHint" style="margin-top:10px;"></div>
 
-          <div class="muted" id="playHint" style="margin-top:10px;"></div>
-
-          <div style="margin-top:14px; display:flex; gap:10px; align-items:center;">
+          <div class="row" style="margin-top:14px; justify-content:space-between;">
             <button id="changeNameBtn" class="ghost">名前を変更</button>
             <span class="muted" id="myNameLabel"></span>
           </div>
         </div>
+
+        <div class="card thin">
+          <div class="row" style="justify-content:space-between;">
+            <div class="muted" style="font-weight:800;">運営</div>
+            <div class="tag muted">pw 1122</div>
+          </div>
+          <div class="row" style="margin-top:10px;">
+            <input id="adminPw" placeholder="1122" inputmode="numeric" maxlength="8" style="width:120px; padding:8px 10px; font-size:13px;" />
+            <button id="adminEnterBtn" class="secondary small">決定</button>
+            <button id="adminExitBtn" class="ghost small" style="display:none;">解除</button>
+          </div>
+          <div class="muted" style="margin-top:8px; font-size:12px;">
+            運営はこの端末だけ（ローカル）で有効になります。
+          </div>
+        </div>
       </div>
 
-      <div id="lobbyRight">
-        <div class="card thin" id="lbCard">
+      <!-- middle -->
+      <div id="midCol" class="col">
+        <div class="card">
           <div class="row" style="justify-content:space-between;">
-            <h3 style="margin:0;">ランキング（上位）</h3>
+            <div style="font-weight:900; font-size:18px;">部屋一覧</div>
+            <span class="tag">最大5部屋</span>
+          </div>
+          <div class="muted" style="margin-top:6px;">
+            参加または観戦できます（誰かがプレイ中でも別部屋ならプレイ可能）
+          </div>
+          <div id="roomsList" style="margin-top:12px;"></div>
+        </div>
+      </div>
+
+      <!-- right -->
+      <div id="rightCol" class="col">
+        <div class="card thin" style="min-height:0;">
+          <div class="row" style="justify-content:space-between;">
+            <div class="muted" style="font-weight:900;">ランキング（上位）</div>
             <span class="tag">Realtime</span>
           </div>
           <div id="leaderboard" style="margin-top:10px;"></div>
         </div>
-
-        <div class="card thin">
-          <div class="row" style="justify-content:space-between;">
-            <div class="muted" style="font-weight:700;">運営</div>
-            <div class="tag muted">password: 1122</div>
-          </div>
-          <div id="adminMini" style="margin-top:10px;">
-            <input id="adminPw" placeholder="1122" inputmode="numeric" maxlength="8" style="width:120px;" />
-            <button id="adminEnterBtn" class="secondary" style="padding:8px 10px; border-radius:10px;">決定</button>
-            <button id="adminExitBtn" class="ghost" style="padding:8px 10px; border-radius:10px; display:none;">解除</button>
-          </div>
-
-          <div id="adminPanel" style="margin-top:12px;">
-            <div class="row">
-              <button id="adminKillBtn" class="danger">運営：強制終了</button>
-              <button id="adminForceResetBtn" class="danger">運営：強制プレイ可能（強制リセット）</button>
-            </div>
-            <div class="muted" style="margin-top:8px; font-size:12px; line-height:1.5;">
-              強制終了：いまのゲームを即終了（同意スキップでリセット）<br/>
-              強制リセット：残骸セッションを削除してプレイ可能状態に戻す
-            </div>
-          </div>
-        </div>
-
       </div>
     </div>
   </section>
@@ -184,19 +191,16 @@
   <!-- Game screen -->
   <section id="gameScreen" class="screen">
     <div id="gameWrap">
-<div id="gameTopBar">
-  <span id="screenTitle">ゲーム</span>
-  <span class="tag" id="youTag">YOU:-</span>
-  <span class="tag" id="modeTag">mode:-</span>
-  <span class="tag" id="stateTag">state:-</span>
-  <div class="spacer"></div>
-
-  <!-- ★追加：準備完了 -->
-  <button id="readyBtn" class="secondary" style="display:none;">準備完了</button>
-
-  <button id="retireBtn" class="danger" style="display:none;">ゲームリアタイア（ホスト）</button>
-  <button id="backLobbyBtn" class="secondary" style="display:none;">ロビーへ</button>
-</div>
+      <div id="gameTopBar">
+        <span class="tag" id="screenTitle">GAME</span>
+        <span class="tag" id="youTag">YOU:-</span>
+        <span class="tag" id="modeTag">mode:-</span>
+        <span class="tag" id="stateTag">state:-</span>
+        <div class="spacer"></div>
+        <button id="readyBtn" class="secondary" style="display:none;">準備完了</button>
+        <button id="retireBtn" class="danger" style="display:none;">リタイア（ホスト）</button>
+        <button id="leaveRoomBtn" class="secondary">部屋を出る</button>
+      </div>
 
       <div id="canvasWrap">
         <canvas id="game"></canvas>
@@ -209,20 +213,19 @@
 
         <div id="ann">
           <div class="card">
-            <div style="font-weight:800; margin-bottom:6px;" id="annTitle"></div>
+            <div style="font-weight:900; margin-bottom:6px;" id="annTitle"></div>
             <div class="muted" id="annBody"></div>
           </div>
         </div>
       </div>
     </div>
   </section>
-
 </div>
 
 <!-- modal -->
 <div id="modal">
   <div class="card">
-    <div style="font-weight:800; margin-bottom:6px;" id="modalTitle"></div>
+    <div style="font-weight:900; margin-bottom:6px;" id="modalTitle"></div>
     <div class="muted" style="margin-bottom:10px;" id="modalBody"></div>
     <div class="row">
       <button id="modalNo" class="secondary">いいえ</button>
@@ -232,11 +235,9 @@
 </div>
 
 <script type="module">
-  // ---------------- Firebase ----------------
   import { initializeApp } from "https://www.gstatic.com/firebasejs/12.8.0/firebase-app.js";
-  import { getDatabase, ref, onValue, get, set, update, remove, runTransaction, serverTimestamp, onDisconnect } from "https://www.gstatic.com/firebasejs/12.8.0/firebase-database.js";
+  import { getDatabase, ref, onValue, get, set, update, remove, runTransaction, serverTimestamp, onDisconnect, query, limitToLast, orderByChild } from "https://www.gstatic.com/firebasejs/12.8.0/firebase-database.js";
   import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/12.8.0/firebase-auth.js";
-  import { getAnalytics } from "https://www.gstatic.com/firebasejs/12.8.0/firebase-analytics.js";
 
   const firebaseConfig = {
     apiKey: "AIzaSyBePhUfYinZ02-1BWbZvzV3IBwoAYh-kxE",
@@ -250,71 +251,46 @@
   };
 
   const app = initializeApp(firebaseConfig);
-  const analytics = getAnalytics(app);
   const db = getDatabase(app);
   const auth = getAuth(app);
 
-  const PATHS = {
-    presence: (uid) => `presence/${uid}`,
-    names: (uid) => `lobby/names/${uid}`,
-    leaderboardTop: `leaderboard/top`,
-
-    sessionCurrent: `session/current`,
-    sessionGame: `session/current/game`,
-    sessionReady: (uid) => `session/current/ready/${uid}`,
-    sessionRecruitingJoiner: `session/current/recruiting/joinerUid`,
-    sessionInputs: (uid) => `session/current/inputs/${uid}`,
-    sessionClientState: (uid) => `session/current/clientState/${uid}`,
-    submissions: (sid) => `submissions/${sid}`
-  };
-
-  // ---------------- UI helpers ----------------
   const $ = (q) => document.querySelector(q);
-  const screens = {
-    name: $("#nameScreen"),
-    lobby: $("#lobbyScreen"),
-    game: $("#gameScreen")
-  };
-
   const ui = {
-
-readyBtn: $("#readyBtn"),
-
-    
     me: $("#me"),
-    statusLine: $("#statusLine"),
-    roleTag: $("#roleTag"),
     adminTag: $("#adminTag"),
+    roomTag: $("#roomTag"),
+    statusLine: $("#statusLine"),
 
-    // name
+    nameScreen: $("#nameScreen"),
+    lobbyScreen: $("#lobbyScreen"),
+    gameScreen: $("#gameScreen"),
+
     nameInput: $("#nameInput"),
     saveNameBtn: $("#saveNameBtn"),
     nameHint: $("#nameHint"),
 
-    // lobby
-    soloBtn: $("#soloBtn"),
-    multiBtn: $("#multiBtn"),
-    watchBtn: $("#watchBtn"),
-    playHint: $("#playHint"),
     myNameLabel: $("#myNameLabel"),
     changeNameBtn: $("#changeNameBtn"),
+
+    createSoloBtn: $("#createSoloBtn"),
+    createMultiBtn: $("#createMultiBtn"),
+    createHint: $("#createHint"),
+
+    roomsList: $("#roomsList"),
     leaderboard: $("#leaderboard"),
 
-    // admin
     adminPw: $("#adminPw"),
     adminEnterBtn: $("#adminEnterBtn"),
     adminExitBtn: $("#adminExitBtn"),
-    adminPanel: $("#adminPanel"),
-    adminKillBtn: $("#adminKillBtn"),
-    adminForceResetBtn: $("#adminForceResetBtn"),
 
     // game
     screenTitle: $("#screenTitle"),
     youTag: $("#youTag"),
     modeTag: $("#modeTag"),
     stateTag: $("#stateTag"),
+    readyBtn: $("#readyBtn"),
     retireBtn: $("#retireBtn"),
-    backLobbyBtn: $("#backLobbyBtn"),
+    leaveRoomBtn: $("#leaveRoomBtn"),
 
     canvas: $("#game"),
     hud: $("#hud"),
@@ -326,7 +302,6 @@ readyBtn: $("#readyBtn"),
     annTitle: $("#annTitle"),
     annBody: $("#annBody"),
 
-    // modal
     modal: $("#modal"),
     modalTitle: $("#modalTitle"),
     modalBody: $("#modalBody"),
@@ -334,27 +309,27 @@ readyBtn: $("#readyBtn"),
     modalNo: $("#modalNo"),
   };
 
-  const sleep = (ms) => new Promise(r => setTimeout(r, ms));
-  function uuidShort() { return Math.random().toString(16).slice(2, 10); }
-
   function setScreen(name) {
-    for (const k of Object.keys(screens)) screens[k].classList.remove("active");
-    screens[name].classList.add("active");
+    ui.nameScreen.classList.toggle("active", name === "name");
+    ui.lobbyScreen.classList.toggle("active", name === "lobby");
+    ui.gameScreen.classList.toggle("active", name === "game");
   }
 
-  const showAnn = (title, body) => {
+  const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+  function uuidShort() { return Math.random().toString(16).slice(2, 10); }
+  function showAnn(title, body) {
     ui.annTitle.textContent = title;
     ui.annBody.textContent = body;
     ui.ann.style.display = "flex";
-  };
-  const hideAnn = () => ui.ann.style.display = "none";
+  }
+  function hideAnn(){ ui.ann.style.display = "none"; }
 
   function showModal(title, body) {
     ui.modalTitle.textContent = title;
     ui.modalBody.textContent = body;
     ui.modal.style.display = "flex";
   }
-  function hideModal() { ui.modal.style.display = "none"; }
+  function hideModal(){ ui.modal.style.display = "none"; }
   function modalAsk(title, body) {
     return new Promise((resolve) => {
       showModal(title, body);
@@ -370,43 +345,56 @@ readyBtn: $("#readyBtn"),
     });
   }
 
-  // ---------------- Admin mode (local only) ----------------
+  // ---------------- Admin mode (local) ----------------
   let adminMode = (localStorage.getItem("inv_admin") === "1");
   function setAdminMode(v) {
     adminMode = v;
     localStorage.setItem("inv_admin", v ? "1" : "0");
     ui.adminTag.style.display = v ? "" : "none";
-    ui.adminPanel.classList.toggle("active", v);
     ui.adminExitBtn.style.display = v ? "" : "none";
   }
   setAdminMode(adminMode);
 
-  ui.adminEnterBtn.onclick = async () => {
-    const pw = ui.adminPw.value.trim();
-    if (pw === "1122") {
+  ui.adminEnterBtn.onclick = () => {
+    if (ui.adminPw.value.trim() === "1122") {
       setAdminMode(true);
       ui.adminPw.value = "";
-    } else {
-      alert("パスワードが違います");
-    }
+    } else alert("パスワードが違います");
   };
-  ui.adminExitBtn.onclick = async () => setAdminMode(false);
+  ui.adminExitBtn.onclick = () => setAdminMode(false);
 
-  // ---------------- Presence helpers ----------------
+  // ---------------- Paths ----------------
+  const PATHS = {
+    presence: (uid) => `presence/${uid}`,
+    names: (uid) => `lobby/names/${uid}`,
+    leaderboardTop: `leaderboard/top`,
+
+    roomsIndex: `rooms_index`,
+    room: (roomId) => `rooms/${roomId}`,
+    roomIndex: (roomId) => `rooms_index/${roomId}`,
+
+    roomGame: (roomId) => `rooms/${roomId}/game`,
+    roomInputs: (roomId, uid) => `rooms/${roomId}/inputs/${uid}`,
+    roomReady: (roomId, uid) => `rooms/${roomId}/ready/${uid}`,
+    roomRecruitJoiner: (roomId) => `rooms/${roomId}/recruiting/joinerUid`,
+    roomClientState: (roomId, uid) => `rooms/${roomId}/clientState/${uid}`,
+
+    submissions: (sid) => `submissions/${sid}`,
+  };
+
+  // ---------------- Presence ----------------
+  async function bindPresence(uid) {
+    const presRef = ref(db, PATHS.presence(uid));
+    await set(presRef, { online: true, lastSeen: serverTimestamp() });
+    onDisconnect(presRef).set({ online: false, lastSeen: serverTimestamp() });
+  }
   async function isOnline(uid) {
     if (!uid) return false;
-    const s = await get(ref(db, PATHS.presence(uid)));
-    const v = s.val();
-    return !!v?.online;
-  }
-  function chooseLeaderUid(session) {
-    const ids = [session?.hostUid, session?.p1Uid, session?.p2Uid].filter(Boolean);
-    if (!ids.length) return null;
-    ids.sort();
-    return ids[0];
+    const snap = await get(ref(db, PATHS.presence(uid)));
+    return !!snap.val()?.online;
   }
 
-  // ---------------- Name / leaderboard ----------------
+  // ---------------- Name ----------------
   async function getMyName(uid) {
     const snap = await get(ref(db, PATHS.names(uid)));
     const v = snap.val();
@@ -416,6 +404,7 @@ readyBtn: $("#readyBtn"),
     await set(ref(db, PATHS.names(uid)), name);
   }
 
+  // ---------------- Leaderboard ----------------
   function bindLeaderboard() {
     onValue(ref(db, PATHS.leaderboardTop), (snap) => {
       const data = snap.val() || [];
@@ -435,10 +424,7 @@ readyBtn: $("#readyBtn"),
     });
   }
 
-  // ---------------- ClientState ----------------
-  const setClientState = (uid, st) => set(ref(db, PATHS.sessionClientState(uid)), st);
-
-  // ---------------- Canvas draw ----------------
+  // ---------------- Game draw ----------------
   const ctx = ui.canvas.getContext("2d");
   function resizeCanvas() {
     const dpr = window.devicePixelRatio || 1;
@@ -462,7 +448,6 @@ readyBtn: $("#readyBtn"),
     ctx.fillStyle = "#9fb0cc";
     ctx.font = "16px system-ui";
     ctx.fillText(text, 16, 28);
-    ctx.fillText("プレイ中ならここに位置/敵/弾/スコアが表示されます", 16, 52);
     ui.hud.style.display = "none";
   }
 
@@ -515,7 +500,6 @@ readyBtn: $("#readyBtn"),
 
     drawBossBar(g.boss);
 
-    // enemies
     for (const e of (g.enemies || [])) {
       const s = toScreen(e.x, e.y);
       ctx.fillStyle =
@@ -526,7 +510,6 @@ readyBtn: $("#readyBtn"),
       ctx.fillRect(s.x - 8, s.y - 8, 16, 16);
     }
 
-    // hazards D
     for (const h of (g.hazards || [])) {
       const s = toScreen(h.x, h.y);
       ctx.fillStyle = "#ff4d6d";
@@ -535,7 +518,6 @@ readyBtn: $("#readyBtn"),
       ctx.fill();
     }
 
-    // boss body
     if (g.boss && g.boss.alive) {
       const s = toScreen(g.boss.x, g.boss.y);
       ctx.fillStyle = g.boss.shieldLeft > 0 ? "#7bdff2" : "#ff3b3b";
@@ -545,7 +527,6 @@ readyBtn: $("#readyBtn"),
       ctx.strokeRect(s.x - 26, s.y - 14, 52, 28);
     }
 
-    // players
     for (const p of (g.players || [])) {
       const s = toScreen(p.x, p.y);
       const col = p.color === "red" ? "#ff3b3b" : "#2b78ff";
@@ -558,14 +539,12 @@ readyBtn: $("#readyBtn"),
       }
     }
 
-    // player bullets
     ctx.fillStyle = "#e8eefc";
     for (const b of (g.playerBullets || [])) {
       const s = toScreen(b.x, b.y);
       ctx.fillRect(s.x - 2, s.y - 8, 4, 16);
     }
 
-    // enemy bullets
     for (const b of (g.enemyBullets || [])) {
       const s = toScreen(b.x, b.y);
       const col =
@@ -579,34 +558,35 @@ readyBtn: $("#readyBtn"),
     }
   }
 
-  // ---------------- Input sender ----------------
-  function bindInputSender(uid) {
+  // ---------------- Input sender (per room) ----------------
+  function bindInputSenderForRoom(uid, roomId, getIsPlayerFn) {
     const keys = { left:false, right:false, shoot:false };
-    let playing = false;
-
-    onValue(ref(db, PATHS.sessionCurrent), (snap) => {
-      const s = snap.val();
-      playing = s?.state === "playing" && (s?.p1Uid === uid || s?.p2Uid === uid);
-    });
+    let bound = true;
 
     window.addEventListener("keydown", (e) => {
+      if (!bound) return;
       if (e.code === "KeyA") keys.left = true;
       if (e.code === "KeyD") keys.right = true;
       if (e.code === "Space") { keys.shoot = true; e.preventDefault(); }
     });
     window.addEventListener("keyup", (e) => {
+      if (!bound) return;
       if (e.code === "KeyA") keys.left = false;
       if (e.code === "KeyD") keys.right = false;
       if (e.code === "Space") { keys.shoot = false; e.preventDefault(); }
     });
 
-    setInterval(() => {
-      if (!playing) return;
-      set(ref(db, PATHS.sessionInputs(uid)), { ...keys, t: Date.now() });
+    const timer = setInterval(() => {
+      if (!bound) return;
+      if (!roomId) return;
+      if (!getIsPlayerFn()) return;
+      set(ref(db, PATHS.roomInputs(roomId, uid)), { ...keys, t: Date.now() });
     }, 50);
+
+    return () => { bound = false; clearInterval(timer); };
   }
 
-  // ---------------- Game Sim (host only) ----------------
+  // ---------------- Game simulation (same as before, room-scoped) ----------------
   const WAVE_DUR = [30, 40, 90, 140];
   const SHOOT_CD = 3.0;
   const SCORE = { A: 60, B: 120, C: 200, D: 0, E: 300, BOSS_HIT: 10, BOSS_KILL: 5000 };
@@ -632,15 +612,15 @@ readyBtn: $("#readyBtn"),
   const randChoice=(rng,arr)=>arr[Math.floor(rng()*arr.length)];
   const bossPhase = (b)=> b.hp>30?1:b.hp>20?2:b.hp>10?3:4;
 
-  function createHostSim(session) {
-    const p1Uid = session.p1Uid;
-    const p2Uid = session.p2Uid;
+  function createHostSim(room) {
+    const p1Uid = room.p1Uid;
+    const p2Uid = room.p2Uid;
 
     const rng = mulberry32((Date.now() ^ 0x9e3779b9) >>> 0);
 
     const st = {
       tick: 0,
-      mode: session.mode,
+      mode: room.mode,
       elapsed: 0,
       wave: 1,
 
@@ -871,7 +851,7 @@ readyBtn: $("#readyBtn"),
       }
     }
 
-    // Boss patterns
+    // boss patterns
     function doBossAttack(phase, enrage) {
       const patterns = [pRing, pRightSide];
       if (phase>=2) patterns.push(pSnipe, pSplit);
@@ -971,11 +951,9 @@ readyBtn: $("#readyBtn"),
       if (!boss || !boss.alive) return;
 
       boss.time += dt;
-      // 140秒以降は激化（A）
       const over = Math.max(0, wave4Elapsed - WAVE_DUR[3]);
       const enrage = 1 + over * 0.012;
 
-      // movement
       if (boss.dashLeft>0) {
         boss.dashLeft -= dt;
         boss.x += boss.dashDir*(BOSS.moveSpeed*3.2)*dt;
@@ -986,7 +964,6 @@ readyBtn: $("#readyBtn"),
         boss.x = clamp(boss.x,0.12,0.88);
       }
 
-      // shield
       boss.shieldAcc += dt;
       if (boss.shieldLeft>0) boss.shieldLeft -= dt;
       if (boss.shieldAcc >= BOSS.shieldEvery) {
@@ -994,7 +971,6 @@ readyBtn: $("#readyBtn"),
         boss.shieldLeft = BOSS.shieldDuration;
       }
 
-      // feint queue
       for (const f of boss.feintQueue) f.t -= dt;
       while (boss.feintQueue.length && boss.feintQueue[0].t <= 0) {
         const fire = boss.feintQueue.shift();
@@ -1004,7 +980,6 @@ readyBtn: $("#readyBtn"),
       const phase = bossPhase(boss);
       const baseAttacksPerSec = phase===1?0.55:phase===2?0.75:phase===3?0.95:1.20;
       boss.attackAcc += baseAttacksPerSec * Math.min(2.2,enrage) * dt;
-
       while (boss.attackAcc >= 1) { boss.attackAcc -= 1; doBossAttack(phase, Math.min(2.2,enrage)); }
     }
 
@@ -1134,124 +1109,262 @@ readyBtn: $("#readyBtn"),
     return { step, snapshot, applyInputs, isAllDead };
   }
 
-  // ---------------- Score consent + leaderboard (normal finish only) ----------------
-  // admin kill / force reset -> skip consent (you requested)
-  async function maybeSubmitScoreFlow({ uid, session, game }) {
-    if (!session?.sessionId) return;
-    const sid = session.sessionId;
+  // ---------------- Room lifecycle ----------------
+  // room: { roomId, state, mode, hostUid, p1Uid, p2Uid, recruiting, ready, createdAt, updatedAt }
+  // state: idle|recruiting|preparing|playing|finished
+  const MAX_ROOMS = 5;
 
-    const isPlayer = session.p1Uid === uid || session.p2Uid === uid;
-    if (!isPlayer) return;
+  let uid = null;
+  let myName = "";
+  let currentRoomId = null;
+  let currentRoomUnsub = null;
+  let currentGameUnsub = null;
+  let stopInputSender = null;
 
-    if (session.finishedReason === "admin_kill" || session.finishedReason === "admin_force_reset") {
-      return; // skip consent
-    }
-
-    const me = (game?.players || []).find(p => p.uid === uid);
-    const myScore = me?.score ?? 0;
-
-    const subRef = ref(db, PATHS.submissions(sid));
-    const existing = (await get(subRef)).val();
-    if (!existing) {
-      await set(subRef, {
-        sessionId: sid,
-        mode: session.mode,
-        p1Uid: session.p1Uid,
-        p2Uid: session.p2Uid || null,
-        p1Consent: null,
-        p2Consent: null,
-        status: "pending",
-        scoreP1: null,
-        scoreP2: null,
-        createdAt: Date.now()
-      });
-    }
-
-    const subNow = (await get(subRef)).val();
-    const isP1 = session.p1Uid === uid;
-    const consentKey = isP1 ? "p1Consent" : "p2Consent";
-    const scoreKey = isP1 ? "scoreP1" : "scoreP2";
-
-    if (subNow?.[consentKey] !== null && subNow?.[consentKey] !== undefined) return;
-
-    const ok = await modalAsk("スコアをランキングに載せますか？", `あなたのスコア: ${myScore}`);
-    await update(subRef, { [consentKey]: ok, [scoreKey]: myScore });
+  async function countRooms() {
+    const snap = await get(ref(db, PATHS.roomsIndex));
+    const v = snap.val() || {};
+    return Object.keys(v).length;
   }
 
-  async function postToLeaderboardIfNeeded(session) {
-    if (!session?.sessionId) return;
-    const sid = session.sessionId;
-
-    // admin finish -> skip
-    if (session.finishedReason === "admin_kill" || session.finishedReason === "admin_force_reset") return;
-
-    const sub = (await get(ref(db, PATHS.submissions(sid)))).val();
-    if (!sub || sub.status === "posted") return;
-
-    if (session.mode === "solo") {
-      if (sub.p1Consent !== true) {
-        await update(ref(db, PATHS.submissions(sid)), { status: "rejected" });
-        return;
-      }
-    } else {
-      if (sub.p1Consent === false || sub.p2Consent === false) {
-        await update(ref(db, PATHS.submissions(sid)), { status: "rejected" });
-        return;
-      }
-      if (sub.p1Consent !== true || sub.p2Consent !== true) return;
-    }
-
-    const total = session.mode === "multi"
-      ? ((sub.scoreP1 ?? 0) + (sub.scoreP2 ?? 0))
-      : (sub.scoreP1 ?? 0);
-
-    const name1 = await getMyName(session.p1Uid);
-    const name2 = session.p2Uid ? await getMyName(session.p2Uid) : "";
-    const displayName = session.mode === "multi" ? `${name1}&${name2}` : name1;
-
-    const lbRef = ref(db, PATHS.leaderboardTop);
-    const lbSnap = await get(lbRef);
-    const arr = Array.isArray(lbSnap.val()) ? lbSnap.val() : [];
-    arr.push({ name: displayName || "no-name", score: total, at: Date.now() });
-    arr.sort((a,b)=> (b.score??0)-(a.score??0));
-    await set(lbRef, arr.slice(0, 10));
-
-    await update(ref(db, PATHS.submissions(sid)), { status: "posted", postedAt: Date.now(), postedScore: total, postedName: displayName });
+  function roomStateLabel(st) {
+    if (st === "recruiting") return "募集中";
+    if (st === "preparing") return "準備中";
+    if (st === "playing") return "プレイ中";
+    if (st === "finished") return "終了処理";
+    return "待機";
   }
 
-  // ---------------- Host loop + cleanup ----------------
-  let hostRunning = false;
-  let hostStop = null;
+  function canJoinAsPlayer(room) {
+    if (!room) return false;
+    if (room.state !== "recruiting" && room.state !== "preparing") return false;
+    if (room.mode !== "multi") return false;
+    return !room.p2Uid; // empty slot
+  }
 
-  async function startHostLoopIfNeeded(uid, session) {
-    const isHost = session?.hostUid === uid;
-    const isPlaying = session?.state === "playing";
+  function isPlayer(room) {
+    return room?.p1Uid === uid || room?.p2Uid === uid;
+  }
 
-    if (hostRunning) {
-      if (!isHost || !isPlaying) { hostRunning=false; if(hostStop)hostStop(); hostStop=null; }
+  function myColor(room) {
+    if (!room) return null;
+    if (room.p1Uid === uid) return "BLUE";
+    if (room.p2Uid === uid) return "RED";
+    return null;
+  }
+
+  async function createRoom(mode) {
+    const roomsCount = await countRooms();
+    if (roomsCount >= MAX_ROOMS) {
+      ui.createHint.textContent = "部屋数が上限（5）です。誰かが部屋を削除してから作成してください。";
       return;
     }
+    const roomId = `room_${Date.now()}_${uuidShort()}`;
+    const room = {
+      roomId,
+      state: (mode === "multi") ? "recruiting" : "preparing",
+      mode,
+      hostUid: uid,
+      hostName: myName,
+      p1Uid: uid,
+      p2Uid: null,
+      recruiting: mode === "multi" ? { joinerUid: null } : null,
+      ready: { [uid]: false },
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    };
+    await set(ref(db, PATHS.room(roomId)), room);
+    await set(ref(db, PATHS.roomIndex(roomId)), { roomId, state: room.state, mode, hostName: myName, createdAt: Date.now() });
+    await enterRoom(roomId, "player");
+  }
+
+  async function deleteRoom(roomId) {
+    await remove(ref(db, PATHS.room(roomId)));
+    await remove(ref(db, PATHS.roomIndex(roomId)));
+  }
+
+  async function enterRoom(roomId, as = "watch") {
+    // clean old
+    await leaveRoom(false);
+
+    currentRoomId = roomId;
+    ui.roomTag.style.display = "";
+    ui.roomTag.textContent = `room:${roomId.slice(-6)}`;
+    setScreen("game");
+
+    // input sender bound to room
+    stopInputSender = bindInputSenderForRoom(uid, roomId, () => {
+      const room = lastRoomCache;
+      return room?.state === "playing" && isPlayer(room);
+    });
+
+    subscribeRoom(roomId);
+  }
+
+  async function leaveRoom(goLobby = true) {
+    if (stopInputSender) { stopInputSender(); stopInputSender = null; }
+
+    if (currentRoomUnsub) { currentRoomUnsub(); currentRoomUnsub = null; }
+    if (currentGameUnsub) { currentGameUnsub(); currentGameUnsub = null; }
+
+    currentRoomId = null;
+    ui.roomTag.style.display = "none";
+    ui.roomTag.textContent = "room:-";
+
+    ui.readyBtn.style.display = "none";
+    ui.retireBtn.style.display = "none";
+
+    if (goLobby) setScreen("lobby");
+  }
+
+  // ---------------- Room subscriptions ----------------
+  let lastRoomCache = null;
+  let hostLoopTimer = null;
+
+  function subscribeRoom(roomId) {
+    const roomRef = ref(db, PATHS.room(roomId));
+    const gameRef = ref(db, PATHS.roomGame(roomId));
+
+    currentRoomUnsub = onValue(roomRef, async (snap) => {
+      const room = snap.val();
+      lastRoomCache = room;
+
+      if (!room) {
+        // room deleted
+        drawIdle("部屋が削除されました");
+        await leaveRoom(true);
+        return;
+      }
+
+      ui.modeTag.textContent = `mode:${room.mode}`;
+      ui.stateTag.textContent = `state:${room.state}`;
+      ui.statusLine.textContent = `in ${roomId.slice(-6)} ${room.state}`;
+
+      const player = isPlayer(room);
+      const host = room.hostUid === uid;
+      ui.retireBtn.style.display = (host && room.state === "playing") ? "" : "none";
+      ui.readyBtn.style.display = (player && room.state === "preparing") ? "" : "none";
+
+      // preparing/recruiting prompt (multi)
+      if (room.state === "recruiting" && room.mode === "multi") {
+        if (!player && !room.recruiting?.joinerUid && !room.p2Uid) {
+          // show prompt once per room open (simple: confirm modal)
+          const ok = await modalAsk("この部屋のマルチに参加しますか？", "最初にOKした1人だけ参加できます");
+          if (!ok) return;
+
+          // transaction to claim joiner
+          const joinerRef = ref(db, PATHS.roomRecruitJoiner(roomId));
+          const tx = await runTransaction(joinerRef, (cur) => (cur ? undefined : uid));
+          if (!tx.committed) {
+            showAnn("間に合いませんでした", "他の人が先に参加しました");
+            setTimeout(hideAnn, 1200);
+            return;
+          }
+
+          // set p2
+          const now = (await get(roomRef)).val();
+          if (!now || now.state !== "recruiting") return;
+
+          await update(roomRef, {
+            state: "preparing",
+            p2Uid: uid,
+            ready: { ...(now.ready||{}), [uid]: false },
+            updatedAt: Date.now(),
+          });
+          await update(ref(db, PATHS.roomIndex(roomId)), { state: "preparing" });
+        }
+      }
+
+      // auto cleanup if host/p1/p2 offline and room is stuck
+      await maybeRoomAutoCleanup(roomId, room);
+
+      // host loop
+      await startHostLoopIfNeeded(roomId, room);
+
+      // finished -> delete automatically (admin skip score; here we keep it simple: always delete after a short delay)
+      if (room.state === "finished") {
+        showAnn("ゲーム終了", `理由: ${room.finishedReason || "?"}\n部屋を閉じます…`);
+        // delete room after 2 sec
+        setTimeout(async () => {
+          await deleteRoom(roomId);
+          hideAnn();
+          await leaveRoom(true);
+        }, 2000);
+      }
+    });
+
+    currentGameUnsub = onValue(gameRef, (snap) => {
+      const g = snap.val();
+      if (!g) {
+        drawIdle("準備中 / 観戦待機中");
+        return;
+      }
+      drawState(g, uid);
+    });
+  }
+
+  async function maybeRoomAutoCleanup(roomId, room) {
+    // if nobody important online, delete room
+    const hostOn = await isOnline(room.hostUid);
+    const p1On = await isOnline(room.p1Uid);
+    const p2On = room.p2Uid ? await isOnline(room.p2Uid) : false;
+    const anyOn = hostOn || p1On || p2On;
+
+    if (!anyOn) {
+      await deleteRoom(roomId);
+      return;
+    }
+
+    // playing but game stale => finish
+    if (room.state === "playing") {
+      const g = (await get(ref(db, PATHS.roomGame(roomId)))).val();
+      const tooOld = !g?.sentAt || (Date.now() - g.sentAt) > 15000;
+      if (tooOld) {
+        await update(ref(db, PATHS.room(roomId)), { state: "finished", finishedReason: "stale_game", updatedAt: Date.now() });
+        await update(ref(db, PATHS.roomIndex(roomId)), { state: "finished" });
+      }
+    }
+  }
+
+  // ---------------- Host loop per room ----------------
+  const activeHostLoops = new Map(); // roomId -> {running, timer}
+
+  async function startHostLoopIfNeeded(roomId, room) {
+    const isHost = room.hostUid === uid;
+    const isPlaying = room.state === "playing";
+
+    const key = roomId;
+    const cur = activeHostLoops.get(key);
+
+    if (cur?.running) {
+      if (!isHost || !isPlaying) {
+        clearInterval(cur.timer);
+        activeHostLoops.delete(key);
+      }
+      return;
+    }
+
     if (!isHost || !isPlaying) return;
 
-    hostRunning = true;
-    const sim = createHostSim(session);
-    await set(ref(db, PATHS.sessionGame), sim.snapshot());
+    const sim = createHostSim(room);
+    await set(ref(db, PATHS.roomGame(roomId)), sim.snapshot());
 
     const hz = 15;
     const intervalMs = Math.floor(1000 / hz);
 
     const timer = setInterval(async () => {
-      const s = (await get(ref(db, PATHS.sessionCurrent))).val();
-      if (!s || s.state !== "playing") return;
+      const roomNow = (await get(ref(db, PATHS.room(roomId)))).val();
+      if (!roomNow || roomNow.state !== "playing") return;
 
-      // 60秒無操作 = リタイア扱い（全プレイヤーが無操作）
-      const inputs = (await get(ref(db, `session/current/inputs`))).val() || {};
+      const inputs = (await get(ref(db, `rooms/${roomId}/inputs`))).val() || {};
+      // idle timeout: both players idle
       const now = Date.now();
-      const uids = [s.p1Uid, s.p2Uid].filter(Boolean);
+      const uids = [roomNow.p1Uid, roomNow.p2Uid].filter(Boolean);
       const lastTimes = uids.map(u => inputs?.[u]?.t ?? 0);
       const allIdle = uids.length > 0 && lastTimes.every(t => (now - t) >= 60000);
       if (allIdle) {
-        await update(ref(db, PATHS.sessionCurrent), { state:"finished", finishedReason:"idle_timeout", updatedAt: serverTimestamp() });
+        await update(ref(db, PATHS.room(roomId)), { state: "finished", finishedReason: "idle_timeout", updatedAt: Date.now() });
+        await update(ref(db, PATHS.roomIndex(roomId)), { state: "finished" });
         return;
       }
 
@@ -1259,364 +1372,175 @@ readyBtn: $("#readyBtn"),
       sim.step(intervalMs / 1000);
 
       if (sim.isAllDead()) {
-        await update(ref(db, PATHS.sessionCurrent), { state:"finished", finishedReason:"all_dead", updatedAt: serverTimestamp() });
+        await update(ref(db, PATHS.room(roomId)), { state: "finished", finishedReason: "all_dead", updatedAt: Date.now() });
+        await update(ref(db, PATHS.roomIndex(roomId)), { state: "finished" });
         return;
       }
 
-      await set(ref(db, PATHS.sessionGame), sim.snapshot());
+      await set(ref(db, PATHS.roomGame(roomId)), sim.snapshot());
     }, intervalMs);
 
-    hostStop = () => clearInterval(timer);
+    activeHostLoops.set(key, { running: true, timer });
   }
 
-  async function maybeAutoCleanup(uid, session) {
-    if (!session || session.state === "idle") return;
+  // ---------------- Rooms list (lobby) ----------------
+  function bindRoomsList() {
+    onValue(ref(db, PATHS.roomsIndex), (snap) => {
+      const rooms = snap.val() || {};
+      const entries = Object.values(rooms).sort((a,b) => (b.createdAt||0)-(a.createdAt||0));
 
-    const leader = chooseLeaderUid(session);
-    const canCleanup = (uid === session.hostUid) || (uid === leader) || adminMode;
-    if (!canCleanup) return;
-
-    const hostOn = await isOnline(session.hostUid);
-    const p1On = await isOnline(session.p1Uid);
-    const p2On = session.p2Uid ? await isOnline(session.p2Uid) : false;
-    const anyImportantOnline = hostOn || p1On || p2On;
-
-    // nobody is online -> wipe
-    if (!anyImportantOnline) {
-      showAnn("セッションをリセットします", "参加者がいないため自動リセットします");
-      await remove(ref(db, PATHS.sessionCurrent));
-      await remove(ref(db, PATHS.sessionGame));
-      hideAnn();
-      return;
-    }
-
-    // playing but stale game
-    if (session.state === "playing") {
-      const g = (await get(ref(db, PATHS.sessionGame))).val();
-      const tooOld = !g?.sentAt || (Date.now() - g.sentAt) > 15000;
-      if (tooOld) {
-        await update(ref(db, PATHS.sessionCurrent), { state:"finished", finishedReason:"stale_game", updatedAt: serverTimestamp() });
-      }
-    }
-  }
-
-  async function resetSessionHard(reason = "reset") {
-    // admin force reset uses this
-    showAnn("データをリセットします", "少々お待ちください");
-    const s = (await get(ref(db, PATHS.sessionCurrent))).val();
-    if (s) {
-      await update(ref(db, PATHS.sessionCurrent), { state:"finished", finishedReason: reason, updatedAt: serverTimestamp() });
-    } else {
-      await remove(ref(db, PATHS.sessionCurrent));
-      await remove(ref(db, PATHS.sessionGame));
-    }
-    hideAnn();
-  }
-
-  async function hostResetFlowIfNeeded(uid, session) {
-    if (!session) return;
-    const leader = chooseLeaderUid(session);
-    const canReset = (uid === session.hostUid) || (uid === leader) || adminMode;
-    if (!canReset) return;
-
-    if (session.state !== "finished") return;
-
-    // admin finish => skip consent and reset immediately
-    if (session.finishedReason === "admin_kill" || session.finishedReason === "admin_force_reset") {
-      await remove(ref(db, PATHS.sessionCurrent));
-      await remove(ref(db, PATHS.sessionGame));
-      hideAnn();
-      return;
-    }
-
-    await update(ref(db, PATHS.sessionCurrent), { state:"resetting", updatedAt: serverTimestamp() });
-    showAnn("データをリセットします", "プレイヤーがロビーに戻るまで待ってください");
-
-    const t0 = Date.now();
-    while (Date.now() - t0 < 20000) {
-      const ss = (await get(ref(db, PATHS.sessionCurrent))).val();
-      if (!ss || ss.state !== "resetting") break;
-      const cs = ss.clientState || {};
-      const need = [ss.p1Uid, ss.p2Uid].filter(Boolean);
-      const ok = need.every(u => cs[u] === "lobby" || cs[u] === "offline");
-      if (ok) break;
-      await sleep(400);
-    }
-
-    await remove(ref(db, PATHS.sessionCurrent));
-    await remove(ref(db, PATHS.sessionGame));
-    hideAnn();
-  }
-
-  // ---------------- Subscribe & draw ----------------
-  function bindGameDraw(uid) {
-    onValue(ref(db, PATHS.sessionGame), (snap) => {
-      const g = snap.val();
-      if (!g) { drawIdle("ロビー / 観戦待機中"); return; }
-      drawState(g, uid);
-    });
-  }
-
-  // ---------------- Lobby actions ----------------
-  function bindLobby(uid) {
-    const sessionRef = ref(db, PATHS.sessionCurrent);
-
-    ui.changeNameBtn.onclick = async () => {
-      // back to name screen
-      await setClientState(uid, "name");
-      setScreen("name");
-    };
-
-    ui.soloBtn.onclick = async () => {
-      const myName = await getMyName(uid);
-      if (!myName) return;
-      const s = (await get(sessionRef)).val();
-      if (s?.state && s.state !== "idle") return;
-
-      const sessionId = `sess_${Date.now()}_${uuidShort()}`;
-      await set(sessionRef, {
-        sessionId,
-        state:"preparing",
-        mode:"solo",
-        hostUid: uid,
-        p1Uid: uid,
-        p2Uid: null,
-        recruiting: null,
-        ready: { [uid]: false },
-        clientState: { [uid]: "preparing" },
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp()
-      });
-    };
-
-    ui.multiBtn.onclick = async () => {
-      const myName = await getMyName(uid);
-      if (!myName) return;
-      const s = (await get(sessionRef)).val();
-      if (s?.state && s.state !== "idle") return;
-
-      const sessionId = `sess_${Date.now()}_${uuidShort()}`;
-      const promptId = `prompt_${Date.now()}_${uuidShort()}`;
-      await set(sessionRef, {
-        sessionId,
-        state:"recruiting",
-        mode:"multi",
-        hostUid: uid,
-        p1Uid: uid,
-        p2Uid: null,
-        recruiting: { promptId, joinerUid: null },
-        ready: { [uid]: false },
-        clientState: { [uid]: "preparing" },
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp()
-      });
-    };
-
-    ui.watchBtn.onclick = async () => {
-      const s = (await get(sessionRef)).val();
-      if (s?.state === "playing") {
-        await setClientState(uid, "watching");
-        setScreen("game");
-      }
-    };
-
-    // admin actions
-    ui.adminKillBtn.onclick = async () => {
-      if (!adminMode) return;
-      const s = (await get(sessionRef)).val();
-      if (!s || (s.state !== "playing" && s.state !== "preparing" && s.state !== "recruiting")) {
-        alert("対象のセッションがありません");
+      ui.roomsList.innerHTML = "";
+      if (entries.length === 0) {
+        ui.roomsList.innerHTML = `<div class="muted">部屋がありません。左から作成してください。</div>`;
         return;
       }
-      await update(sessionRef, { state:"finished", finishedReason:"admin_kill", updatedAt: serverTimestamp() });
-      await remove(ref(db, PATHS.sessionGame));
-      await remove(sessionRef);
-    };
 
-    ui.adminForceResetBtn.onclick = async () => {
-      if (!adminMode) return;
-      await update(sessionRef, { state:"finished", finishedReason:"admin_force_reset", updatedAt: serverTimestamp() }).catch(()=>{});
-      await remove(ref(db, PATHS.sessionGame)).catch(()=>{});
-      await remove(sessionRef).catch(()=>{});
-      alert("強制リセットしました。プレイ可能です。");
-    };
+      for (const r of entries) {
+        const div = document.createElement("div");
+        div.className = "roomRow";
 
-    // game controls
-    ui.retireBtn.onclick = async () => {
-      const s = (await get(sessionRef)).val();
-      if (!s || s.hostUid !== uid) return;
-      if (s.state !== "playing") return;
-      await update(sessionRef, { state:"finished", finishedReason:"retire", updatedAt: serverTimestamp() });
-    };
-    ui.backLobbyBtn.onclick = async () => {
-      await setClientState(uid, "lobby");
-      setScreen("lobby");
-    };
+        const left = document.createElement("div");
+        const top = document.createElement("div");
+        top.className = "roomTop";
+        top.innerHTML = `
+          <span class="tag">#${r.roomId.slice(-6)}</span>
+          <span class="tag">${r.mode || "-"}</span>
+          <span class="tag">${roomStateLabel(r.state || "idle")}</span>
+          <span class="muted">host: ${escapeHtml(r.hostName || "?")}</span>
+        `;
+        const meta = document.createElement("div");
+        meta.className = "roomMeta";
+        meta.textContent = `作成: ${new Date(r.createdAt || Date.now()).toLocaleTimeString()}`;
 
-    ui.readyBtn.onclick = async () => {
-      await set(ref(db, PATHS.sessionReady(uid)), true);
-      await setClientState(uid, "preparing");
+        left.appendChild(top);
+        left.appendChild(meta);
 
-      const s = (await get(sessionRef)).val();
-      if (!s || s.hostUid !== uid) return;
-      if (s.state !== "preparing") return;
+        const btns = document.createElement("div");
+        btns.className = "roomBtns";
 
-      const p1 = s.p1Uid;
-      const p2 = s.p2Uid;
-      const ready = s.ready || {};
-      const ok1 = !!ready?.[p1];
-      const ok2 = (s.mode === "solo") ? true : !!ready?.[p2];
-      if (ok1 && ok2) await update(sessionRef, { state:"playing", updatedAt: serverTimestamp() });
-    };
+        const joinBtn = document.createElement("button");
+        joinBtn.className = "secondary small";
+        joinBtn.textContent = "参加/入室";
+        joinBtn.onclick = async () => {
+          // enter room; if not player, you'll get prompt in recruiting (multi) or just watch/standby
+          await enterRoom(r.roomId, "auto");
+        };
 
-    // session state listener -> control screens / buttons
-    onValue(sessionRef, async (snap) => {
-      const s = snap.val() || { state:"idle" };
-      ui.statusLine.textContent = `${s.state}${s.mode ? ` (${s.mode})` : ""}`;
-      ui.modeTag.textContent = `mode:${s.mode || "-"}`;
-      ui.stateTag.textContent = `state:${s.state || "-"}`;
+        const watchBtn = document.createElement("button");
+        watchBtn.className = "ghost small";
+        watchBtn.textContent = "観戦";
+        watchBtn.onclick = async () => {
+          await enterRoom(r.roomId, "watch");
+        };
 
-      const myName = await getMyName(uid);
-      ui.myNameLabel.textContent = myName ? `名前: ${myName}` : "";
-      const nameOk = !!myName;
+        btns.appendChild(joinBtn);
+        btns.appendChild(watchBtn);
 
-      // auto cleanup (stale)
-      await maybeAutoCleanup(uid, s);
+        if (adminMode) {
+          const adminKill = document.createElement("button");
+          adminKill.className = "danger small";
+          adminKill.textContent = "運営:強制終了";
+          adminKill.onclick = async () => {
+            await update(ref(db, PATHS.room(r.roomId)), { state: "finished", finishedReason: "admin_kill", updatedAt: Date.now() }).catch(()=>{});
+            await update(ref(db, PATHS.roomIndex(r.roomId)), { state: "finished" }).catch(()=>{});
+          };
 
-      const busy = s.state !== "idle";
-      ui.soloBtn.disabled = !nameOk || busy;
-      ui.multiBtn.disabled = !nameOk || busy;
+          const adminReset = document.createElement("button");
+          adminReset.className = "danger small";
+          adminReset.textContent = "運営:強制リセット";
+          adminReset.onclick = async () => {
+            await deleteRoom(r.roomId);
+          };
 
-      if (!nameOk) ui.playHint.textContent = "名前を保存してください";
-      else if (!busy) ui.playHint.textContent = "プレイ可能です（ソロ/マルチ）";
-      else ui.playHint.textContent = "現在他の方がプレイ中です。観戦のみ可能です。";
-
-      const isPlayer = s.p1Uid===uid || s.p2Uid===uid;
-      const isHost = s.hostUid===uid;
-
-      let role = "spectator";
-      if (isHost) role = "host";
-      if (isPlayer && !isHost) role = "player";
-      ui.roleTag.textContent = `role:${role}`;
-
-      // show/hide game buttons
-      ui.retireBtn.style.display = (isHost && s.state==="playing" && s.mode==="multi") ? "" : "none";
-      ui.backLobbyBtn.style.display = (s.state!=="playing") ? "" : "none";
-
-      // screen transitions
-      if (s.state === "playing") {
-        // switch to game screen for everyone (player or watcher)
-        setScreen("game");
-        await setClientState(uid, isPlayer ? "playing" : "watching");
-      }
-      if (!s || s.state === "idle") {
-        // back to lobby
-        if (nameOk) setScreen("lobby");
-        await setClientState(uid, "lobby");
-      }
-      if (s.state === "finished") {
-        setScreen("game");
-        showAnn("ゲーム終了", `理由: ${s.finishedReason||"?"}\nロビーに戻ります…`);
-      }
-
-      // recruiting prompt for non-player
-      if (s.state==="recruiting" && s.mode==="multi") {
-        const already = (s.p1Uid===uid || s.p2Uid===uid);
-        if (!already && !s.recruiting?.joinerUid) {
-          const ok = await modalAsk("マルチに参加しますか？（早押し）", "最初にOKした1人だけ参加できます");
-          if (!ok) return;
-          const joinerRef = ref(db, PATHS.sessionRecruitingJoiner);
-          const tx = await runTransaction(joinerRef, (cur) => (cur ? undefined : uid));
-          if (!tx.committed) {
-            showAnn("間に合いませんでした", "ロビーに戻ります");
-            setTimeout(hideAnn, 1200);
-            return;
-          }
-          const now = (await get(sessionRef)).val();
-          if (!now || now.state !== "recruiting") return;
-          await update(sessionRef, {
-            state:"preparing",
-            p2Uid: uid,
-            ready: { ...(now.ready||{}), [uid]: false },
-            clientState: { ...(now.clientState||{}), [uid]: "preparing" },
-            updatedAt: serverTimestamp()
-          });
+          btns.appendChild(adminKill);
+          btns.appendChild(adminReset);
         }
-      }
 
-      // if preparing, show ready button to players
-      ui.readyBtn.style.display = (isPlayer && s.state === "preparing") ? "" : "none";
+        div.appendChild(left);
+        div.appendChild(btns);
 
-      // host loop
-      await startHostLoopIfNeeded(uid, s);
-
-      // finished flow: consent (skip for admin) -> post -> reset
-      if (s.state === "finished") {
-        const game = (await get(ref(db, PATHS.sessionGame))).val();
-        await maybeSubmitScoreFlow({ uid, session: s, game });
-
-        const leader = chooseLeaderUid(s);
-        if (uid === s.hostUid || uid === leader) await postToLeaderboardIfNeeded(s);
-
-        await hostResetFlowIfNeeded(uid, s);
-
-        hideAnn();
-        setScreen("lobby");
+        ui.roomsList.appendChild(div);
       }
     });
   }
 
-  // ---------------- Game state draw subscription ----------------
-  function bindGame(uid) {
-    onValue(ref(db, PATHS.sessionGame), (snap) => {
-      const g = snap.val();
-      if (!g) { drawIdle("待機中"); return; }
-      drawState(g, uid);
-    });
+  function escapeHtml(s) {
+    return String(s).replace(/[&<>"']/g, (m) => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;" }[m]));
   }
 
-  // ---------------- Presence ----------------
-  async function bindPresence(uid) {
-    const presRef = ref(db, PATHS.presence(uid));
-    await set(presRef, { online:true, lastSeen: serverTimestamp() });
-    onDisconnect(presRef).set({ online:false, lastSeen: serverTimestamp() });
-  }
-
-  // ---------------- Boot ----------------
+  // ---------------- Main ----------------
   await signInAnonymously(auth);
 
   onAuthStateChanged(auth, async (user) => {
     if (!user) return;
-    const uid = user.uid;
+    uid = user.uid;
     ui.me.textContent = `uid: ${uid.slice(0, 8)}…`;
 
     await bindPresence(uid);
     bindLeaderboard();
-    bindInputSender(uid);
-    bindGame(uid);
-    bindLobby(uid);
+    bindRoomsList();
 
-    // Decide initial screen based on name existence
-    const myName = await getMyName(uid);
+    // name decide screen
+    myName = await getMyName(uid);
     if (!myName) {
       setScreen("name");
       ui.nameHint.textContent = "名前を入力して決定してください";
-      await setClientState(uid, "name");
     } else {
       ui.myNameLabel.textContent = `名前: ${myName}`;
       setScreen("lobby");
-      await setClientState(uid, "lobby");
     }
 
-    // Name screen action
     ui.saveNameBtn.onclick = async () => {
       const v = ui.nameInput.value.trim().slice(0,20);
       if (!v) { ui.nameHint.textContent = "名前を入力してください"; return; }
       await setMyName(uid, v);
-      ui.nameHint.textContent = `保存しました: ${v}`;
-      ui.myNameLabel.textContent = `名前: ${v}`;
-      await setClientState(uid, "lobby");
+      myName = v;
+      ui.myNameLabel.textContent = `名前: ${myName}`;
       setScreen("lobby");
+    };
+
+    ui.changeNameBtn.onclick = () => {
+      setScreen("name");
+      ui.nameHint.textContent = "名前を変更して決定してください";
+    };
+
+    ui.createSoloBtn.onclick = async () => {
+      await createRoom("solo");
+    };
+    ui.createMultiBtn.onclick = async () => {
+      await createRoom("multi");
+    };
+
+    ui.leaveRoomBtn.onclick = async () => {
+      await leaveRoom(true);
+    };
+
+    ui.readyBtn.onclick = async () => {
+      if (!currentRoomId) return;
+      await set(ref(db, PATHS.roomReady(currentRoomId, uid)), true);
+
+      const roomRef = ref(db, PATHS.room(currentRoomId));
+      const room = (await get(roomRef)).val();
+      if (!room || room.hostUid !== uid) return;
+      if (room.state !== "preparing") return;
+
+      const ready = room.ready || {};
+      const ok1 = !!ready?.[room.p1Uid];
+      const ok2 = (room.mode === "solo") ? true : !!ready?.[room.p2Uid];
+
+      if (ok1 && ok2) {
+        await update(roomRef, { state: "playing", updatedAt: Date.now() });
+        await update(ref(db, PATHS.roomIndex(currentRoomId)), { state: "playing" });
+      }
+    };
+
+    ui.retireBtn.onclick = async () => {
+      if (!currentRoomId) return;
+      const roomRef = ref(db, PATHS.room(currentRoomId));
+      const room = (await get(roomRef)).val();
+      if (!room || room.hostUid !== uid) return;
+      await update(roomRef, { state: "finished", finishedReason: "retire", updatedAt: Date.now() });
+      await update(ref(db, PATHS.roomIndex(currentRoomId)), { state: "finished" });
     };
   });
 </script>

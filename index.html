@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Invader Rooms (RTDB) - Single File Complete (7min cleanup, no stale-game)</title>
+  <title>Inder Rooms (RTDB) - Single File Complete (fixed uid, fixed 決定)</title>
   <style>
     :root { color-scheme: dark; }
     html, body { height: 100%; margin: 0; background:#0b0e14; color:#e8eefc; font-family: system-ui, -apple-system, Segoe UI, Roboto, "Noto Sans JP", sans-serif; }
@@ -131,7 +131,7 @@
           <div class="muted" style="margin-top:8px; line-height:1.5;">
             操作：<b>A/D</b> 移動、<b>Space</b> 発射（CD 3秒）<br/>
             Wave：30/40/90/140秒（以降ボス継続・激化）<br/>
-            終了：全員死亡 or ホストリタイア or 7分経過（強制終了）
+            終了：全員死亡 / ホストリタイア / 7分経過（強制終了）
           </div>
           <div class="row" style="margin-top:12px;">
             <button id="createSoloBtn">ソロ部屋を作る</button>
@@ -384,25 +384,25 @@
   };
 
   // ---------------- Presence ----------------
-  async function bindPresence(uid) {
-    const presRef = ref(db, PATHS.presence(uid));
+  async function bindPresence(userId) {
+    const presRef = ref(db, PATHS.presence(userId));
     await set(presRef, { online: true, lastSeen: serverTimestamp() });
     onDisconnect(presRef).set({ online: false, lastSeen: serverTimestamp() });
   }
-  async function isOnline(uid) {
-    if (!uid) return false;
-    const snap = await get(ref(db, PATHS.presence(uid)));
+  async function isOnline(userId) {
+    if (!userId) return false;
+    const snap = await get(ref(db, PATHS.presence(userId)));
     return !!snap.val()?.online;
   }
 
   // ---------------- Name ----------------
-  async function getMyName(uid) {
-    const snap = await get(ref(db, PATHS.names(uid)));
+  async function getMyName(userId) {
+    const snap = await get(ref(db, PATHS.names(userId)));
     const v = snap.val();
     return (typeof v === "string" && v.trim()) ? v.trim() : "";
   }
-  async function setMyName(uid, name) {
-    await set(ref(db, PATHS.names(uid)), name);
+  async function setMyName(userId, name) {
+    await set(ref(db, PATHS.names(userId)), name);
   }
 
   // ---------------- Leaderboard ----------------
@@ -560,7 +560,7 @@
   }
 
   // ---------------- Input sender (per room) ----------------
-  function bindInputSenderForRoom(uid, roomId, getIsPlayerFn) {
+  function bindInputSenderForRoom(userId, roomId, getIsPlayerFn) {
     const keys = { left:false, right:false, shoot:false };
     let bound = true;
 
@@ -583,7 +583,7 @@
       if (!bound) return;
       if (!roomId) return;
       if (!getIsPlayerFn()) return;
-      set(ref(db, PATHS.roomInputs(roomId, uid)), { ...keys, t: Date.now() });
+      set(ref(db, PATHS.roomInputs(roomId, userId)), { ...keys, t: Date.now() });
     }, 50);
 
     return () => {
@@ -650,7 +650,7 @@
       rng
     };
 
-    const mkPlayer = (uid, color, x) => ({ uid, color, x, y: 0.9, alive: true, score: 0, shootCooldown: 0 });
+    const mkPlayer = (playerUid, color, x) => ({ uid: playerUid, color, x, y: 0.9, alive: true, score: 0, shootCooldown: 0 });
     st.players[p1Uid] = mkPlayer(p1Uid, "blue", 0.45);
     if (p2Uid) st.players[p2Uid] = mkPlayer(p2Uid, "red", 0.55);
 
@@ -839,8 +839,8 @@
     function collideHazardsToPlayers() {
       for (const h of st.hazards) {
         if (!h.alive) continue;
-        for (const uid in st.players) {
-          const p=st.players[uid]; if(!p.alive) continue;
+        for (const puid in st.players) {
+          const p=st.players[puid]; if(!p.alive) continue;
           const dx=p.x-h.x, dy=p.y-h.y;
           if (dx*dx+dy*dy<0.0016) { p.alive=false; h.alive=false; break; }
         }
@@ -851,8 +851,8 @@
     function collideEnemyBulletsToPlayers() {
       for (const b of st.enemyBullets) {
         if (b.dead) continue;
-        for (const uid in st.players) {
-          const p=st.players[uid]; if(!p.alive) continue;
+        for (const puid in st.players) {
+          const p=st.players[puid]; if(!p.alive) continue;
           const dx=p.x-b.x, dy=p.y-b.y;
           if (dx*dx+dy*dy<0.0010) { p.alive=false; b.dead=true; break; }
         }
@@ -1002,10 +1002,7 @@
           if (boss.shieldLeft>0) continue;
           boss.hp -= 1;
           const p=st.players[b.ownerUid]; if (p) p.score += SCORE.BOSS_HIT;
-          if (boss.hp<=0) {
-            const p2=st.players[b.ownerUid]; if (p2) p2.score += SCORE.BOSS_KILL;
-            boss.alive = false;
-          }
+          if (boss.hp<=0) { boss.alive = false; }
         }
       }
     }
@@ -1013,8 +1010,8 @@
     function collideBossToPlayers() {
       const boss=st.boss;
       if (!boss || !boss.alive) return;
-      for (const uid in st.players) {
-        const p=st.players[uid]; if(!p.alive) continue;
+      for (const puid in st.players) {
+        const p=st.players[puid]; if(!p.alive) continue;
         const dx=p.x-boss.x, dy=p.y-boss.y;
         if (dx*dx+dy*dy<0.0040) p.alive=false;
       }
@@ -1039,11 +1036,10 @@
 
       if (newWave !== st.wave) { st.wave = newWave; spawnWave(newWave); }
 
-      // players
-      for (const uid in st.players) {
-        const p=st.players[uid];
+      for (const puid in st.players) {
+        const p=st.players[puid];
         if (!p.alive) continue;
-        const inp = lastInputs?.[uid] || {};
+        const inp = lastInputs?.[puid] || {};
         const speed=0.45;
         if (inp.left) p.x -= speed*dt;
         if (inp.right) p.x += speed*dt;
@@ -1051,7 +1047,7 @@
 
         p.shootCooldown = Math.max(0, p.shootCooldown - dt);
         if (inp.shoot && p.shootCooldown===0) {
-          st.playerBullets.push({ x:p.x, y:p.y-0.03, ownerUid:uid });
+          st.playerBullets.push({ x:p.x, y:p.y-0.03, ownerUid:puid });
           p.shootCooldown = SHOOT_CD;
         }
       }
@@ -1070,8 +1066,6 @@
         collidePlayerBulletsToEnemies();
       } else {
         const wave4Elapsed = Math.max(0, st.elapsed - tW3);
-
-        // 全員死ぬまで終わらない：ボスは倒されても復活
         if ((!st.boss || !st.boss.alive) && !isAllDead()) {
           st._bossRespawnAcc += dt;
           if (st._bossRespawnAcc >= 3.0) { st._bossRespawnAcc = 0; spawnBoss(); }
@@ -1119,14 +1113,16 @@
 
   // ---------------- Room system ----------------
   const MAX_ROOMS = 5;
-  const ROOM_MAX_PLAY_MS = 7 * 60 * 1000; // 7 minutes
+  const ROOM_MAX_PLAY_MS = 7 * 60 * 1000;
 
-  let uid = null;
-  let myName = "";
+  let currentUserId = null;
+  let currentUserName = "";
+
   let currentRoomId = null;
   let currentRoomUnsub = null;
   let currentGameUnsub = null;
   let stopInputSender = null;
+
   let lastRoomCache = null;
 
   async function countRooms() {
@@ -1144,7 +1140,7 @@
   }
 
   function isPlayer(room) {
-    return room?.p1Uid === uid || room?.p2Uid === uid;
+    return room?.p1Uid === currentUserId || room?.p2Uid === currentUserId;
   }
 
   async function createRoom(mode) {
@@ -1155,24 +1151,24 @@
     }
 
     const roomId = `room_${Date.now()}_${uuidShort()}`;
+    const now = Date.now();
     const room = {
       roomId,
       state: (mode === "multi") ? "recruiting" : "preparing",
       mode,
-      hostUid: uid,
-      hostName: myName,
-      p1Uid: uid,
+      hostUid: currentUserId,
+      hostName: currentUserName,
+      p1Uid: currentUserId,
       p2Uid: null,
       recruiting: mode === "multi" ? { joinerUid: null } : null,
-      ready: { [uid]: false },
-      createdAt: Date.now(),
-      updatedAt: Date.now(),
+      ready: { [currentUserId]: false },
+      createdAt: now,
+      updatedAt: now,
       startedAt: 0
     };
 
     await set(ref(db, PATHS.room(roomId)), room);
-    await set(ref(db, PATHS.roomIndex(roomId)), { roomId, state: room.state, mode, hostName: myName, createdAt: Date.now(), startedAt: 0 });
-
+    await set(ref(db, PATHS.roomIndex(roomId)), { roomId, state: room.state, mode, hostName: currentUserName, createdAt: now, startedAt: 0 });
     await enterRoom(roomId);
   }
 
@@ -1197,12 +1193,13 @@
 
   async function enterRoom(roomId) {
     await leaveRoom(false);
+
     currentRoomId = roomId;
     ui.roomTag.style.display = "";
     ui.roomTag.textContent = `room:${roomId.slice(-6)}`;
     setScreen("game");
 
-    stopInputSender = bindInputSenderForRoom(uid, roomId, () => {
+    stopInputSender = bindInputSenderForRoom(currentUserId, roomId, () => {
       const room = lastRoomCache;
       return room?.state === "playing" && isPlayer(room);
     });
@@ -1210,7 +1207,6 @@
     subscribeRoom(roomId);
   }
 
-  // ---------------- Rooms list ----------------
   function bindRoomsList() {
     onValue(ref(db, PATHS.roomsIndex), (snap) => {
       const rooms = snap.val() || {};
@@ -1268,13 +1264,13 @@
             await update(ref(db, PATHS.roomIndex(r.roomId)), { state: "finished" }).catch(()=>{});
           };
 
-          const adminReset = document.createElement("button");
-          adminReset.className = "danger small";
-          adminReset.textContent = "運営:削除";
-          adminReset.onclick = async () => { await deleteRoom(r.roomId); };
+          const adminDel = document.createElement("button");
+          adminDel.className = "danger small";
+          adminDel.textContent = "運営:削除";
+          adminDel.onclick = async () => { await deleteRoom(r.roomId); };
 
           btns.appendChild(adminKill);
-          btns.appendChild(adminReset);
+          btns.appendChild(adminDel);
         }
 
         div.appendChild(left);
@@ -1288,7 +1284,7 @@
     return String(s).replace(/[&<>"']/g, (m) => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;" }[m]));
   }
 
-  // ---------------- Subscribe room + host loop ----------------
+  // ---------------- Room subscribe + host loop ----------------
   const activeHostLoops = new Map(); // roomId -> timer
 
   function subscribeRoom(roomId) {
@@ -1310,7 +1306,7 @@
       ui.statusLine.textContent = `in ${roomId.slice(-6)} ${room.state}`;
 
       const player = isPlayer(room);
-      const host = room.hostUid === uid;
+      const host = room.hostUid === currentUserId;
       ui.retireBtn.style.display = (host && room.state === "playing") ? "" : "none";
       ui.readyBtn.style.display = (player && room.state === "preparing") ? "" : "none";
 
@@ -1320,18 +1316,18 @@
           const ok = await modalAsk("この部屋のマルチに参加しますか？", "最初にOKした1人だけ参加できます");
           if (ok) {
             const joinerRef = ref(db, PATHS.roomRecruitJoiner(roomId));
-            const tx = await runTransaction(joinerRef, (cur) => (cur ? undefined : uid));
+            const tx = await runTransaction(joinerRef, (cur) => (cur ? undefined : currentUserId));
             if (!tx.committed) {
               showAnn("間に合いませんでした", "他の人が先に参加しました");
               setTimeout(hideAnn, 1200);
               return;
             }
-            const now = (await get(roomRef)).val();
-            if (!now || now.state !== "recruiting") return;
+            const nowRoom = (await get(roomRef)).val();
+            if (!nowRoom || nowRoom.state !== "recruiting") return;
             await update(roomRef, {
               state: "preparing",
-              p2Uid: uid,
-              ready: { ...(now.ready||{}), [uid]: false },
+              p2Uid: currentUserId,
+              ready: { ...(nowRoom.ready||{}), [currentUserId]: false },
               updatedAt: Date.now(),
             });
             await update(ref(db, PATHS.roomIndex(roomId)), { state: "preparing" });
@@ -1339,13 +1335,10 @@
         }
       }
 
-      // auto cleanup if nobody online (NO stale-game check here!)
+      // auto cleanup: nobody online -> delete room (NO stale-game)
       await maybeRoomAutoCleanup(roomId, room);
 
-      // start host loop if needed
-      await startHostLoopIfNeeded(roomId, room);
-
-      // room deletion timing: delete on finished, OR 7 min from startedAt (handled by host loop + also here as backup)
+      // backup: 7min -> finish (even if host loop stopped)
       if (room.state === "playing" && room.startedAt) {
         if ((Date.now() - room.startedAt) >= ROOM_MAX_PLAY_MS) {
           await update(roomRef, { state: "finished", finishedReason: "time_limit_7min", updatedAt: Date.now() }).catch(()=>{});
@@ -1353,9 +1346,12 @@
         }
       }
 
+      // start host loop
+      await startHostLoopIfNeeded(roomId, room);
+
+      // finished -> delete room (end timing)
       if (room.state === "finished") {
         showAnn("ゲーム終了", `理由: ${room.finishedReason || "?"}\n部屋を閉じます…`);
-        // delete after short delay
         setTimeout(async () => {
           await deleteRoom(roomId);
           hideAnn();
@@ -1367,26 +1363,22 @@
     currentGameUnsub = onValue(gameRef, (snap) => {
       const g = snap.val();
       if (!g) { drawIdle("準備中 / 観戦待機中"); return; }
-      drawState(g, uid);
+      drawState(g, currentUserId);
     });
   }
 
   async function maybeRoomAutoCleanup(roomId, room) {
-    // if nobody important online -> delete room
     const hostOn = await isOnline(room.hostUid);
     const p1On = await isOnline(room.p1Uid);
     const p2On = room.p2Uid ? await isOnline(room.p2Uid) : false;
     const anyOn = hostOn || p1On || p2On;
-
     if (!anyOn) {
       await deleteRoom(roomId);
-      return;
     }
-    // NOTE: stale-game check removed intentionally (your request).
   }
 
   async function startHostLoopIfNeeded(roomId, room) {
-    const isHost = room.hostUid === uid;
+    const isHost = room.hostUid === currentUserId;
     const isPlaying = room.state === "playing";
     const existing = activeHostLoops.get(roomId);
 
@@ -1414,14 +1406,14 @@
       }
       if (roomNow.state !== "playing") return;
 
-      // 7 minutes from startedAt => finish
+      // 7min -> finish
       if (roomNow.startedAt && (Date.now() - roomNow.startedAt) >= ROOM_MAX_PLAY_MS) {
         await update(ref(db, PATHS.room(roomId)), { state: "finished", finishedReason: "time_limit_7min", updatedAt: Date.now() });
         await update(ref(db, PATHS.roomIndex(roomId)), { state: "finished" });
         return;
       }
 
-      // 60sec idle => finish (all players idle)
+      // 60s idle (all players)
       const inputs = (await get(ref(db, PATHS.roomInputsRoot(roomId)))).val() || {};
       const now = Date.now();
       const uids = [roomNow.p1Uid, roomNow.p2Uid].filter(Boolean);
@@ -1448,37 +1440,35 @@
     activeHostLoops.set(roomId, timer);
   }
 
-  // ---------------- Lobby actions ----------------
-  let uid = null;
-  let myName = "";
-
   // ---------------- Boot ----------------
   await signInAnonymously(auth);
 
   onAuthStateChanged(auth, async (user) => {
     if (!user) return;
-    uid = user.uid;
-    ui.me.textContent = `uid: ${uid.slice(0, 8)}…`;
 
-    await bindPresence(uid);
+    currentUserId = user.uid;
+    ui.me.textContent = `uid: ${currentUserId.slice(0, 8)}…`;
+
+    await bindPresence(currentUserId);
     bindLeaderboard();
     bindRoomsList();
 
-    myName = await getMyName(uid);
-    if (!myName) {
+    currentUserName = await getMyName(currentUserId);
+    if (!currentUserName) {
       setScreen("name");
-      ui.nameHint.textContent = "名前を入力して決定してください";
+      ui.nameHint.textContent = "名前を入力して決��してください";
     } else {
-      ui.myNameLabel.textContent = `名前: ${myName}`;
+      ui.myNameLabel.textContent = `名前: ${currentUserName}`;
       setScreen("lobby");
     }
 
+    // ★「決定が押せない」対策：ここで必ずonclickをセット（途中で例外が起きないように、必要な要素は全て存在）
     ui.saveNameBtn.onclick = async () => {
-      const v = ui.nameInput.value.trim().slice(0,20);
+      const v = ui.nameInput.value.trim().slice(0, 20);
       if (!v) { ui.nameHint.textContent = "名前を入力してください"; return; }
-      await setMyName(uid, v);
-      myName = v;
-      ui.myNameLabel.textContent = `名前: ${myName}`;
+      await setMyName(currentUserId, v);
+      currentUserName = v;
+      ui.myNameLabel.textContent = `名前: ${currentUserName}`;
       setScreen("lobby");
     };
 
@@ -1488,11 +1478,11 @@
     };
 
     ui.createSoloBtn.onclick = async () => {
-      if (!myName) { alert("名前を先に決定してください"); return; }
+      if (!currentUserName) { alert("名前を先に決定してください"); return; }
       await createRoom("solo");
     };
     ui.createMultiBtn.onclick = async () => {
-      if (!myName) { alert("名前を先に決定してください"); return; }
+      if (!currentUserName) { alert("名前を先に決定してください"); return; }
       await createRoom("multi");
     };
 
@@ -1502,11 +1492,11 @@
 
     ui.readyBtn.onclick = async () => {
       if (!currentRoomId) return;
-      await set(ref(db, PATHS.roomReady(currentRoomId, uid)), true);
+      await set(ref(db, PATHS.roomReady(currentRoomId, currentUserId)), true);
 
       const roomRef = ref(db, PATHS.room(currentRoomId));
       const room = (await get(roomRef)).val();
-      if (!room || room.hostUid !== uid) return;
+      if (!room || room.hostUid !== currentUserId) return;
       if (room.state !== "preparing") return;
 
       const ready = room.ready || {};
@@ -1515,7 +1505,7 @@
 
       if (ok1 && ok2) {
         const now = Date.now();
-        await update(roomRef, { state: "playing", startedAt: now, updatedAt: now });  // ★ startedAt set
+        await update(roomRef, { state: "playing", startedAt: now, updatedAt: now });
         await update(ref(db, PATHS.roomIndex(currentRoomId)), { state: "playing", startedAt: now });
       }
     };
@@ -1524,7 +1514,7 @@
       if (!currentRoomId) return;
       const roomRef = ref(db, PATHS.room(currentRoomId));
       const room = (await get(roomRef)).val();
-      if (!room || room.hostUid !== uid) return;
+      if (!room || room.hostUid !== currentUserId) return;
       await update(roomRef, { state: "finished", finishedReason: "retire", updatedAt: Date.now() });
       await update(ref(db, PATHS.roomIndex(currentRoomId)), { state: "finished" });
     };

@@ -496,7 +496,7 @@ function stopBGM() {
   setAdminMode(adminMode);
 
   ui.adminEnterBtn.onclick = () => {
-    if (ui.adminPw.value.trim() === "1122") {
+    if (ui.adminPw.value.trim() === "0505") {
       setAdminMode(true);
       ui.adminPw.value = "";
     } else alert("パスワードが違います");
@@ -881,7 +881,7 @@ function stopBGM() {
   }
 
   // ---------------- Game simulation (host) ----------------
-  const WAVE_DUR = [2, 2, 5, 10];
+  const WAVE_DUR = [2, 2, 1, 10];
   const SCORE = { A: 60, B: 120, C: 200, D: 0, E: 300, BOSS_HIT: 10, BOSS_KILL: 5000 };
   const ENEMY = {
     A: { firePerSec: 0.36, bulletSpeed: 0.28, moveSpeed: 0.06 },
@@ -896,7 +896,7 @@ const BOSS = {
   y: 0.16,
   baseBulletSpeed: 0.66,
   shieldEvery: 9.0,
-  shieldDuration: 8.4,       // ← ここを10.0に！
+  shieldDuration: 7.9,       // ← ここを10.0に！
   moveSpeed: 0.18
 };
   const clamp = (v,a,b)=>Math.max(a,Math.min(b,v));

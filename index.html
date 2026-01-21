@@ -929,7 +929,7 @@ function stopBGM() {
   }
 
   // ---------------- Game simulation (host) ----------------
-  const WAVE_DUR = [2, 2, 1, 10];
+  const WAVE_DUR = [20, 20, 35, 10];
   const SCORE = { A: 60, B: 120, C: 200, D: 0, E: 300, BOSS_HIT: 10, BOSS_KILL: 5000 };
   const ENEMY = {
     A: { firePerSec: 0.36, bulletSpeed: 0.28, moveSpeed: 0.06 },
@@ -942,9 +942,9 @@ const BOSS = {
   hpMax: 130,
   x: 0.5,
   y: 0.16,
-  baseBulletSpeed: 0.4,
+  baseBulletSpeed: 0.33,
   shieldEvery: 9.0,
-  shieldDuration: 8.1,       // ← ここを10.0に！
+  shieldDuration: 8,       // ← ここを10.0に！
   moveSpeed: 0.18
 };
   const clamp = (v,a,b)=>Math.max(a,Math.min(b,v));

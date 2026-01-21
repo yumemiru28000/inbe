@@ -28,9 +28,39 @@ export function createRenderer(canvas, hud) {
     if (hud) hud.style.display = "none";
   }
 
+  function drawBossBar(boss) {
+    if (!boss || !boss.alive) return;
+    const w = canvas.getBoundingClientRect().width;
+    const barW = Math.min(520, w - 24);
+    const x = (w - barW) / 2;
+    const y = 12;
+    const h = 14;
+
+    const ratio = boss.hpMax > 0 ? Math.max(0, boss.hp / boss.hpMax) : 0;
+
+    // 枠
+    ctx.fillStyle = "rgba(10,14,22,.72)";
+    ctx.fillRect(x - 6, y - 6, barW + 12, h + 12);
+
+    ctx.strokeStyle = "#1f2a3a";
+    ctx.strokeRect(x - 6, y - 6, barW + 12, h + 12);
+
+    // 本体
+    ctx.fillStyle = "#3a0b0b";
+    ctx.fillRect(x, y, barW, h);
+
+    // 残量
+    ctx.fillStyle = boss.shieldLeft > 0 ? "#7bdff2" : "#ff3b3b";
+    ctx.fillRect(x, y, barW * ratio, h);
+
+    ctx.fillStyle = "#e8eefc";
+    ctx.font = "12px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace";
+    const shield = boss.shieldLeft > 0 ? ` SHIELD:${boss.shieldLeft.toFixed(1)}s` : "";
+    ctx.fillText(`BOSS HP ${boss.hp}/${boss.hpMax}  PHASE:${boss.phase}${shield}`, x + 6, y + 11);
+  }
+
   function drawState(g, myUid) {
     resize(); clear();
-
     if (hud) hud.style.display = "";
 
     const my = (g.players || []).find(p => p.uid === myUid);
@@ -48,7 +78,10 @@ export function createRenderer(canvas, hud) {
       hud2.textContent = "";
     }
 
-    // 敵（タイプで色を変える）
+    // ボスバー
+    drawBossBar(g.boss);
+
+    // 敵（Wave1-3）
     for (const e of (g.enemies || [])) {
       const s = toScreen(e.x, e.y);
       ctx.fillStyle =
@@ -59,13 +92,23 @@ export function createRenderer(canvas, hud) {
       ctx.fillRect(s.x - 8, s.y - 8, 16, 16);
     }
 
-    // Dハザード（爆弾）
+    // Dハザード
     for (const h of (g.hazards || [])) {
       const s = toScreen(h.x, h.y);
       ctx.fillStyle = "#ff4d6d";
       ctx.beginPath();
       ctx.arc(s.x, s.y, 10, 0, Math.PI * 2);
       ctx.fill();
+    }
+
+    // ボス本体
+    if (g.boss && g.boss.alive) {
+      const s = toScreen(g.boss.x, g.boss.y);
+      ctx.fillStyle = g.boss.shieldLeft > 0 ? "#7bdff2" : "#ff3b3b";
+      ctx.fillRect(s.x - 26, s.y - 14, 52, 28);
+      ctx.strokeStyle = "#ffffff";
+      ctx.lineWidth = 2;
+      ctx.strokeRect(s.x - 26, s.y - 14, 52, 28);
     }
 
     // プレイヤー
@@ -89,10 +132,16 @@ export function createRenderer(canvas, hud) {
       ctx.fillRect(s.x - 2, s.y - 8, 4, 16);
     }
 
-    // 敵弾
+    // 敵弾（種類で色）
     for (const b of (g.enemyBullets || [])) {
       const s = toScreen(b.x, b.y);
-      ctx.fillStyle = (b.type === "C_HOMING") ? "#7bdff2" : "#ffccff";
+      const col =
+        b.type === "C_HOMING" ? "#7bdff2" :
+        b.type.includes("SNIPE") ? "#ffffff" :
+        b.type.includes("RING") ? "#ffccff" :
+        b.type.includes("WAVE") ? "#b4f8c8" :
+        "#ffccff";
+      ctx.fillStyle = col;
       ctx.fillRect(s.x - 3, s.y - 3, 6, 6);
     }
   }

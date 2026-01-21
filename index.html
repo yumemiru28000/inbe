@@ -1,10 +1,9 @@
-
 <!doctype html>
 <html lang="ja">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Invader Rooms (RTDB) - Smooth FIX + Despawn OOB</title>
+  <title>Invader Rooms (RTDB) - Smooth FIX + Despawn + Render Reset</title>
   <style>
     :root { color-scheme: dark; }
     html, body { height: 100%; margin: 0; background:#05070b; color:#e8eefc; font-family: system-ui, -apple-system, Segoe UI, Roboto, "Noto Sans JP", sans-serif; overflow:hidden; }
@@ -293,7 +292,6 @@
   import { getDatabase, ref, onValue, get, set, update, remove, runTransaction, serverTimestamp, onDisconnect } from "https://www.gstatic.com/firebasejs/12.8.0/firebase-database.js";
   import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/12.8.0/firebase-auth.js";
 
-  // ---------------- Firebase config ----------------
   const firebaseConfig = {
     apiKey: "AIzaSyBePhUfYinZ02-1BWbZvzV3IBwoAYh-kxE",
     authDomain: "suisougaku-bdcc0.firebaseapp.com",
@@ -309,16 +307,13 @@
   const db = getDatabase(app);
   const auth = getAuth(app);
 
-  // ---------------- Paths ----------------
   const PATHS = {
     presence: (uid) => `presence/${uid}`,
     names: (uid) => `lobby/names/${uid}`,
     leaderboardTop: `leaderboard/top`,
-
     roomsIndex: `rooms_index`,
     room: (roomId) => `rooms/${roomId}`,
     roomIndex: (roomId) => `rooms_index/${roomId}`,
-
     roomGame: (roomId) => `rooms/${roomId}/game`,
     roomInputsRoot: (roomId) => `rooms/${roomId}/inputs`,
     roomInputs: (roomId, uid) => `rooms/${roomId}/inputs/${uid}`,
@@ -326,7 +321,6 @@
     roomRecruitJoiner: (roomId) => `rooms/${roomId}/recruiting/joinerUid`,
   };
 
-  // ---------------- UI ----------------
   const $ = (q) => document.querySelector(q);
   const ui = {
     me: $("#me"),
@@ -411,7 +405,6 @@
     });
   }
 
-  // ---------------- Admin mode (local) ----------------
   let adminMode = (localStorage.getItem("inv_admin") === "1");
   function setAdminMode(v) {
     adminMode = v;
@@ -429,7 +422,6 @@
   };
   ui.adminExitBtn.onclick = () => setAdminMode(false);
 
-  // ---------------- Presence ----------------
   async function bindPresence(userId) {
     const presRef = ref(db, PATHS.presence(userId));
     await set(presRef, { online: true, lastSeen: serverTimestamp() });
@@ -441,7 +433,6 @@
     return !!snap.val()?.online;
   }
 
-  // ---------------- Name ----------------
   async function getMyName(userId) {
     const snap = await get(ref(db, PATHS.names(userId)));
     const v = snap.val();
@@ -451,7 +442,6 @@
     await set(ref(db, PATHS.names(userId)), name);
   }
 
-  // ---------------- Leaderboard ----------------
   function bindLeaderboard() {
     onValue(ref(db, PATHS.leaderboardTop), (snap) => {
       const data = snap.val() || [];
@@ -468,7 +458,6 @@
     });
   }
 
-  // ---------------- Optional wave backgrounds ----------------
   const waveBg = { 1: new Image(), 2: new Image(), 3: new Image(), 4: new Image() };
   const waveBgOk = { 1:false, 2:false, 3:false, 4:false };
   function loadBg(n) {
@@ -481,7 +470,6 @@
   }
   loadBg(1); loadBg(2); loadBg(3); loadBg(4);
 
-  // ---------------- Canvas sizing ----------------
   const ctx = ui.canvas.getContext("2d");
   let stageW = 0, stageH = 0, dpr = 1;
 
@@ -494,13 +482,10 @@
 
   function resizeCanvasToStage() {
     syncStageSizeCache();
-
     const bw = Math.max(1, Math.floor(stageW * dpr));
     const bh = Math.max(1, Math.floor(stageH * dpr));
-
     if (ui.canvas.width !== bw) ui.canvas.width = bw;
     if (ui.canvas.height !== bh) ui.canvas.height = bh;
-
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.scale(dpr, dpr);
     ctx.imageSmoothingEnabled = true;
@@ -525,7 +510,6 @@
     hazardR: 10 * 1.5,
   };
 
-  // ---------------- Background draw ----------------
   const stars = [];
   function rebuildStars() {
     stars.length = 0;
@@ -595,13 +579,26 @@
     ctx.fillText(`BOSS HP ${boss.hp}/${boss.hpMax}  PHASE:${boss.phase}${shield}`, x + 6, y + 11);
   }
 
-  // ---------------- Smooth motion ----------------
   let latestSnap = null;
   let renderState = null;
   const EMA_ALPHA = 0.18;
 
+  // ★追加：レンダ状態リセット用
+  let lastSeenWave = null;
+  let lastSeenTick = null;
+  let lastSeenSentAt = null;
+
+  function hardResetRenderStateFromLatest() {
+    if (!latestSnap) return;
+    renderState = JSON.parse(JSON.stringify(latestSnap));
+    lastSeenWave = latestSnap.wave ?? null;
+    lastSeenTick = latestSnap.tick ?? null;
+    lastSeenSentAt = latestSnap.sentAt ?? null;
+  }
+
   function lerp(a,b,t){ return a + (b-a)*t; }
 
+  // ★修正：消えたIDは残さない（残像/二重表示防止）
   function smoothListByIdSafe(key, alpha) {
     const nextArr = (latestSnap && Array.isArray(latestSnap[key])) ? latestSnap[key] : [];
     const allHaveId = nextArr.every(o => o && typeof o.id === "string");
@@ -612,19 +609,19 @@
 
     const prevArr = (renderState && Array.isArray(renderState[key])) ? renderState[key] : [];
     const prevMap = new Map(prevArr.map(o => [o.id, o]));
-    const out = [];
 
+    const out = [];
     for (const ne of nextArr) {
       const re = prevMap.get(ne.id);
       if (!re) out.push({ ...ne });
-      else out.push({ ...ne, x: lerp(re.x, ne.x, alpha), y: lerp(re.y, ne.y, alpha) });
+      else out.push({ ...ne, x: lerp(re.x ?? ne.x, ne.x, alpha), y: lerp(re.y ?? ne.y, ne.y, alpha) });
     }
     renderState[key] = out;
   }
 
   function smoothToward(alpha) {
     if (!latestSnap) return;
-    if (!renderState) { renderState = JSON.parse(JSON.stringify(latestSnap)); return; }
+    if (!renderState) { hardResetRenderStateFromLatest(); return; }
 
     renderState.wave = latestSnap.wave;
     renderState.elapsed = latestSnap.elapsed;
@@ -765,7 +762,26 @@
     function frame() {
       if (latestSnap && state.userId) {
         try {
-          smoothToward(EMA_ALPHA);
+          // ★追加：wave開始/ゲーム再生成時に描画状態を強制リセット（重なり・チカチカ防止）
+          const w = latestSnap.wave ?? null;
+          const t = latestSnap.tick ?? null;
+          const s = latestSnap.sentAt ?? null;
+
+          const waveChanged = (lastSeenWave != null && w != null && w !== lastSeenWave);
+          const tickReset = (lastSeenTick != null && t != null && t < lastSeenTick);
+          const sentAtJump = (lastSeenSentAt != null && s != null && Math.abs(s - lastSeenSentAt) > 4000);
+
+          if (!renderState) {
+            hardResetRenderStateFromLatest();
+          } else if (waveChanged || tickReset || sentAtJump) {
+            hardResetRenderStateFromLatest();
+          } else {
+            smoothToward(EMA_ALPHA);
+            lastSeenWave = w;
+            lastSeenTick = t;
+            lastSeenSentAt = s;
+          }
+
           drawState(renderState || latestSnap, state.userId);
         } catch (e) {
           console.error("render error", e);
@@ -777,10 +793,8 @@
     requestAnimationFrame(frame);
   }
 
-  // ---------------- Rapid fire ----------------
-  const FIRE_RATE = 10; // shots/sec
+  const FIRE_RATE = 10;
 
-  // ---------------- Input sender ----------------
   function bindInputSenderForRoom(userId, roomId, getIsPlayerFn) {
     const keys = { left:false, right:false, shoot:false };
     let bound = true;
@@ -815,7 +829,6 @@
     };
   }
 
-  // ---------------- Game simulation (host) ----------------
   const WAVE_DUR = [30, 40, 90, 140];
   const SCORE = { A: 60, B: 120, C: 200, D: 0, E: 300, BOSS_HIT: 10, BOSS_KILL: 5000 };
   const ENEMY = {
@@ -872,23 +885,17 @@
       rng
     };
 
-    // ---------------- ★追加：画面外のものを完全削除（DBに残さない） ----------------
-    // alive=false / dead=true だけだと配列が増え続けて「がたつき」の原因になるので、
-    // 毎tick最後にfilterで消します。
-    const DESPAWN_PAD = 0.18; // 余白（小さすぎると画面端で消えやすい）
-
+    // ★追加：画面外を完全削除（配列肥大化→チカチカ/重なり悪化防止）
+    const DESPAWN_PAD = 0.18;
     function isOutNorm(x, y, pad = DESPAWN_PAD) {
       return (x < -pad || x > 1 + pad || y < -pad || y > 1 + pad);
     }
-
     function cleanupOutOfBounds() {
       st.enemies = (st.enemies || []).filter(e => e && e.alive !== false && !isOutNorm(e.x, e.y));
       st.hazards = (st.hazards || []).filter(h => h && h.alive !== false && !isOutNorm(h.x, h.y));
-
       st.playerBullets = (st.playerBullets || []).filter(b => b && !b.dead && !isOutNorm(b.x, b.y));
       st.enemyBullets  = (st.enemyBullets  || []).filter(b => b && !b.dead && !isOutNorm(b.x, b.y));
     }
-    // ----------------------------------------------------------------------
 
     const mkPlayer = (playerUid, color, x) => ({ uid: playerUid, color, x, y: 0.9, alive: true, score: 0, fireAcc: 0 });
     st.players[p1Uid] = mkPlayer(p1Uid, "blue", 0.45);
@@ -933,6 +940,9 @@
       if (w===2) spawnFormation(["A","B","C"]);
       if (w===3) spawnFormation(["B","C"]);
       if (w===4) spawnBoss();
+
+      // wave開始直後のゴミが残らないように念のため
+      cleanupOutOfBounds();
     }
     spawnWave(1);
 
@@ -1325,7 +1335,7 @@
       movePlayerBullets(dt);
       st.playerBullets = st.playerBullets.filter(b=>!b.dead);
 
-      // ---------------- ★追加：最後に必ず実行（画面外の全オブジェクト削除） ----------------
+      // ★追加：最後に必ず掃除
       cleanupOutOfBounds();
     }
 
@@ -1357,7 +1367,6 @@
     return { step, snapshot, applyInputs, isAllDead };
   }
 
-  // ---------------- Room system ----------------
   const MAX_ROOMS = 5;
   const ROOM_MAX_PLAY_MS = 7 * 60 * 1000;
 
@@ -1397,6 +1406,9 @@
 
     latestSnap = null;
     renderState = null;
+    lastSeenWave = null;
+    lastSeenTick = null;
+    lastSeenSentAt = null;
 
     if (goLobby) setScreen("lobby");
   }
@@ -1587,7 +1599,6 @@
         }
       }
 
-      // auto cleanup
       const hostOn = await isOnline(room.hostUid);
       const p1On = await isOnline(room.p1Uid);
       const p2On = room.p2Uid ? await isOnline(room.p2Uid) : false;
@@ -1615,8 +1626,18 @@
     state.gameUnsub = onValue(gameRef, (snap) => {
       const g = snap.val() || null;
       latestSnap = g;
-      if (!g) drawIdle("準備中 / 観戦待機中");
-      if (g && !renderState) renderState = JSON.parse(JSON.stringify(g));
+
+      if (!g) {
+        drawIdle("準備中 / 観戦待機中");
+        renderState = null;
+        lastSeenWave = null;
+        lastSeenTick = null;
+        lastSeenSentAt = null;
+        return;
+      }
+
+      // ★追加：新スナップが来た時点で「初回」は即リセット（残像防止）
+      if (!renderState) hardResetRenderStateFromLatest();
     });
   }
 
@@ -1677,7 +1698,6 @@
     activeHostLoops.set(roomId, timer);
   }
 
-  // ---------------- Boot ----------------
   await signInAnonymously(auth);
 
   onAuthStateChanged(auth, async (user) => {

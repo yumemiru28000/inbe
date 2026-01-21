@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Invader Rooms (RTDB) - Rapid Fire + Interpolation</title>
+  <title>Ider Rooms (RTDB) - Rapid Fire + Smooth Interp</title>
   <style>
     :root { color-scheme: dark; }
     html, body { height: 100%; margin: 0; background:#05070b; color:#e8eefc; font-family: system-ui, -apple-system, Segoe UI, Roboto, "Noto Sans JP", sans-serif; overflow:hidden; }
@@ -186,7 +186,7 @@
         <div class="card">
           <div style="font-weight:1000; font-size:18px; letter-spacing:.4px;">ロビー</div>
           <div class="muted" style="margin-top:8px; line-height:1.6;">
-            操作：<b>A/D</b> 移動、<b>Space</b> 連射<br/>
+            操作：<b>A/D</b> 移動、<b>Space</b> 連射（クールタイムなし）<br/>
             Wave：30/40/90/140秒（以降ボス継続・激化）<br/>
             終了：全員死亡 / ホストリタイア / 7分経過（強制終了）
           </div>
@@ -295,6 +295,7 @@
   import { getDatabase, ref, onValue, get, set, update, remove, runTransaction, serverTimestamp, onDisconnect } from "https://www.gstatic.com/firebasejs/12.8.0/firebase-database.js";
   import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/12.8.0/firebase-auth.js";
 
+  // ---------------- Firebase config ----------------
   const firebaseConfig = {
     apiKey: "AIzaSyBePhUfYinZ02-1BWbZvzV3IBwoAYh-kxE",
     authDomain: "suisougaku-bdcc0.firebaseapp.com",
@@ -310,6 +311,7 @@
   const db = getDatabase(app);
   const auth = getAuth(app);
 
+  // ---------------- Paths ----------------
   const PATHS = {
     presence: (uid) => `presence/${uid}`,
     names: (uid) => `lobby/names/${uid}`,
@@ -326,6 +328,7 @@
     roomRecruitJoiner: (roomId) => `rooms/${roomId}/recruiting/joinerUid`,
   };
 
+  // ---------------- UI ----------------
   const $ = (q) => document.querySelector(q);
   const ui = {
     me: $("#me"),
@@ -355,6 +358,7 @@
     adminEnterBtn: $("#adminEnterBtn"),
     adminExitBtn: $("#adminExitBtn"),
 
+    screenTitle: $("#screenTitle"),
     youTag: $("#youTag"),
     modeTag: $("#modeTag"),
     stateTag: $("#stateTag"),
@@ -385,10 +389,21 @@
     ui.lobbyScreen.classList.toggle("active", name === "lobby");
     ui.gameScreen.classList.toggle("active", name === "game");
   }
+
   function uuidShort() { return Math.random().toString(16).slice(2, 10); }
-  function showAnn(title, body) { ui.annTitle.textContent = title; ui.annBody.textContent = body; ui.ann.style.display = "flex"; }
+
+  function showAnn(title, body) {
+    ui.annTitle.textContent = title;
+    ui.annBody.textContent = body;
+    ui.ann.style.display = "flex";
+  }
   function hideAnn(){ ui.ann.style.display = "none"; }
-  function showModal(title, body) { ui.modalTitle.textContent = title; ui.modalBody.textContent = body; ui.modal.style.display = "flex"; }
+
+  function showModal(title, body) {
+    ui.modalTitle.textContent = title;
+    ui.modalBody.textContent = body;
+    ui.modal.style.display = "flex";
+  }
   function hideModal(){ ui.modal.style.display = "none"; }
   function modalAsk(title, body) {
     return new Promise((resolve) => {
@@ -404,11 +419,12 @@
       ui.modalNo.addEventListener("click", no);
     });
   }
+
   function escapeHtml(s) {
     return String(s).replace(/[&<>"']/g, (m) => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;" }[m]));
   }
 
-  // admin (local)
+  // ---------------- Admin mode (local) ----------------
   let adminMode = (localStorage.getItem("inv_admin") === "1");
   function setAdminMode(v) {
     adminMode = v;
@@ -419,12 +435,14 @@
   setAdminMode(adminMode);
 
   ui.adminEnterBtn.onclick = () => {
-    if (ui.adminPw.value.trim() === "1122") { setAdminMode(true); ui.adminPw.value = ""; }
-    else alert("パスワードが違います");
+    if (ui.adminPw.value.trim() === "1122") {
+      setAdminMode(true);
+      ui.adminPw.value = "";
+    } else alert("パスワードが違います");
   };
   ui.adminExitBtn.onclick = () => setAdminMode(false);
 
-  // presence
+  // ---------------- Presence ----------------
   async function bindPresence(userId) {
     const presRef = ref(db, PATHS.presence(userId));
     await set(presRef, { online: true, lastSeen: serverTimestamp() });
@@ -436,7 +454,7 @@
     return !!snap.val()?.online;
   }
 
-  // name
+  // ---------------- Name ----------------
   async function getMyName(userId) {
     const snap = await get(ref(db, PATHS.names(userId)));
     const v = snap.val();
@@ -446,12 +464,15 @@
     await set(ref(db, PATHS.names(userId)), name);
   }
 
-  // leaderboard
+  // ---------------- Leaderboard ----------------
   function bindLeaderboard() {
     onValue(ref(db, PATHS.leaderboardTop), (snap) => {
       const data = snap.val() || [];
       ui.leaderboard.innerHTML = "";
-      if (!Array.isArray(data) || data.length === 0) { ui.leaderboard.textContent = "まだ記録がありません"; return; }
+      if (!Array.isArray(data) || data.length === 0) {
+        ui.leaderboard.textContent = "まだ記録がありません";
+        return;
+      }
       const ol = document.createElement("ol");
       ol.style.margin = "0 0 0 18px";
       for (const row of data) {
@@ -463,7 +484,7 @@
     });
   }
 
-  // optional wave backgrounds
+  // ---------------- Optional wave backgrounds ----------------
   const waveBg = { 1: new Image(), 2: new Image(), 3: new Image(), 4: new Image() };
   const waveBgOk = { 1:false, 2:false, 3:false, 4:false };
   function loadBg(n) {
@@ -476,8 +497,9 @@
   }
   loadBg(1); loadBg(2); loadBg(3); loadBg(4);
 
-  // render
+  // ---------------- Render (16:9 stage + scale 1.5x) ----------------
   const ctx = ui.canvas.getContext("2d");
+
   function resizeCanvasToStage() {
     const dpr = window.devicePixelRatio || 1;
     const rect = ui.stage.getBoundingClientRect();
@@ -535,9 +557,9 @@
       }
     }
 
-    ctx.globalAlpha = 0.22;
+    ctx.globalAlpha = 0.18;
     ctx.fillStyle = "#ffffff";
-    for (let i = 0; i < 120; i++) {
+    for (let i = 0; i < 140; i++) {
       const x = (i * 73) % w;
       const y = (i * 191) % h;
       ctx.fillRect(x, y, 1, 1);
@@ -572,94 +594,115 @@
     ctx.fillText(`BOSS HP ${boss.hp}/${boss.hpMax}  PHASE:${boss.phase}${shield}`, x + 6, y + 11);
   }
 
+  // ---------- Interpolation to fix "ガタガタ" ----------
+  // We keep a short history of snapshots (from RTDB ~15Hz) and render an interpolated frame at 60fps.
+  const snapBuf = []; // { t, g }
+  const SNAP_BUF_MAX = 20;
+  const RENDER_DELAY_MS = 120; // render slightly behind real-time to allow interpolation
+
+  function pushSnapshot(g) {
+    const t = (typeof g?.sentAt === "number") ? g.sentAt : Date.now();
+    snapBuf.push({ t, g });
+    while (snapBuf.length > SNAP_BUF_MAX) snapBuf.shift();
+  }
+
   function lerp(a,b,t){ return a + (b-a)*t; }
-  function lerpObj(a,b,t){
-    if (a==null) return b;
-    if (b==null) return a;
-    return { ...b, x: lerp(a.x,b.x,t), y: lerp(a.y,b.y,t) };
+  function lerpObj(a,b,t,keys){
+    const o = {};
+    for (const k of keys) o[k] = lerp(a[k], b[k], t);
+    return o;
   }
 
-  // --- interpolation snapshot holder ---
-  // We keep two snapshots and render slightly "behind" to interpolate smoothly.
-  const net = {
-    prev: null,
-    curr: null,
-    prevAt: 0,
-    currAt: 0,
-    renderDelayMs: 120, // 2 frames @15Hz=133ms くらい。少し短く
-  };
+  function buildInterpolatedGame(nowMs) {
+    if (snapBuf.length === 0) return null;
+    if (snapBuf.length === 1) return snapBuf[0].g;
 
-  function ingestSnapshot(snap) {
-    net.prev = net.curr;
-    net.prevAt = net.currAt;
-    net.curr = snap;
-    net.currAt = snap?.sentAt || Date.now();
+    const target = nowMs - RENDER_DELAY_MS;
 
-    if (!net.prev) {
-      net.prev = net.curr;
-      net.prevAt = net.currAt - 1;
+    // find bracketing snapshots
+    let i1 = -1;
+    for (let i = snapBuf.length - 2; i >= 0; i--) {
+      if (snapBuf[i].t <= target) { i1 = i; break; }
     }
-  }
+    if (i1 === -1) return snapBuf[0].g;
 
-  function buildInterpolatedSnapshot(nowMs) {
-    if (!net.curr) return null;
+    const a = snapBuf[i1];
+    const b = snapBuf[i1 + 1];
+    const span = Math.max(1, b.t - a.t);
+    const t = Math.max(0, Math.min(1, (target - a.t) / span));
 
-    const targetTime = nowMs - net.renderDelayMs;
-    const span = Math.max(1, net.currAt - net.prevAt);
-    const t = Math.max(0, Math.min(1, (targetTime - net.prevAt) / span));
+    // interpolate only things that look "ガタガタ" (players + enemies + bullets + hazards + boss)
+    const ga = a.g, gb = b.g;
+    const out = JSON.parse(JSON.stringify(gb)); // base on newer snapshot (keeps arrays/fields)
+    out.wave = gb.wave ?? ga.wave;
+    out.elapsed = gb.elapsed ?? ga.elapsed;
 
-    const a = net.prev || net.curr;
-    const b = net.curr;
+    // players by uid
+    const pa = new Map((ga.players||[]).map(p => [p.uid, p]));
+    const pb = new Map((gb.players||[]).map(p => [p.uid, p]));
+    const uids = new Set([...pa.keys(), ...pb.keys()]);
+    out.players = [];
+    for (const uid of uids) {
+      const p0 = pa.get(uid);
+      const p1 = pb.get(uid);
+      const base = p1 || p0;
+      if (!base) continue;
+      if (p0 && p1) {
+        out.players.push({
+          ...base,
+          ...lerpObj(p0, p1, t, ["x","y","shootCooldown"])
+        });
+      } else {
+        out.players.push(base);
+      }
+    }
 
-    // wave/elapsedは最新優先
-    const out = {
-      ...b,
-      wave: b.wave,
-      elapsed: b.elapsed,
-      tick: b.tick,
-      sentAt: b.sentAt
-    };
+    // enemies by index (good enough, stable formation order)
+    const ea = ga.enemies || [];
+    const eb = gb.enemies || [];
+    const nE = Math.min(ea.length, eb.length);
+    out.enemies = [];
+    for (let i=0;i<nE;i++){
+      const e0=ea[i], e1=eb[i];
+      out.enemies.push({ ...e1, ...lerpObj(e0, e1, t, ["x","y"]) });
+    }
 
-    // players: by uid
-    const mapA = new Map((a.players||[]).map(p => [p.uid, p]));
-    const mapB = new Map((b.players||[]).map(p => [p.uid, p]));
-    const uids = new Set([...mapA.keys(), ...mapB.keys()]);
-    out.players = [...uids].map(uid => {
-      const pa = mapA.get(uid);
-      const pb = mapB.get(uid);
-      if (!pa) return pb;
-      if (!pb) return pa;
-      return { ...pb, x: lerp(pa.x, pb.x, t), y: lerp(pa.y, pb.y, t) };
-    });
+    // hazards by index
+    const ha = ga.hazards || [];
+    const hb = gb.hazards || [];
+    const nH = Math.min(ha.length, hb.length);
+    out.hazards = [];
+    for (let i=0;i<nH;i++){
+      const h0=ha[i], h1=hb[i];
+      out.hazards.push({ ...h1, ...lerpObj(h0, h1, t, ["x","y"]) });
+    }
 
-    // enemies: count & order same within 15Hz generally. fallback: index lerp
-    out.enemies = (b.enemies||[]).map((e, i) => {
-      const ea = (a.enemies||[])[i];
-      if (!ea) return e;
-      return { ...e, x: lerp(ea.x, e.x, t), y: lerp(ea.y, e.y, t) };
-    });
+    // player bullets by index
+    const pba = ga.playerBullets || [];
+    const pbb = gb.playerBullets || [];
+    const nPB = Math.min(pba.length, pbb.length);
+    out.playerBullets = [];
+    for (let i=0;i<nPB;i++){
+      const b0=pba[i], b1=pbb[i];
+      out.playerBullets.push({ ...b1, ...lerpObj(b0, b1, t, ["x","y"]) });
+    }
 
-    out.hazards = (b.hazards||[]).map((h, i) => {
-      const ha = (a.hazards||[])[i];
-      if (!ha) return h;
-      return { ...h, x: lerp(ha.x, h.x, t), y: lerp(ha.y, h.y, t) };
-    });
+    // enemy bullets by index
+    const eba = ga.enemyBullets || [];
+    const ebb = gb.enemyBullets || [];
+    const nEB = Math.min(eba.length, ebb.length);
+    out.enemyBullets = [];
+    for (let i=0;i<nEB;i++){
+      const b0=eba[i], b1=ebb[i];
+      out.enemyBullets.push({ ...b1, ...lerpObj(b0, b1, t, ["x","y"]) });
+    }
 
-    out.playerBullets = (b.playerBullets||[]).map((bb, i) => {
-      const ba = (a.playerBullets||[])[i];
-      if (!ba) return bb;
-      return { ...bb, x: lerp(ba.x, bb.x, t), y: lerp(ba.y, bb.y, t) };
-    });
-
-    out.enemyBullets = (b.enemyBullets||[]).map((bb, i) => {
-      const ba = (a.enemyBullets||[])[i];
-      if (!ba) return bb;
-      return { ...bb, x: lerp(ba.x, bb.x, t), y: lerp(ba.y, bb.y, t) };
-    });
-
-    out.boss = (b.boss && a.boss)
-      ? { ...b.boss, x: lerp(a.boss.x, b.boss.x, t), y: lerp(a.boss.y, b.boss.y, t) }
-      : (b.boss || a.boss || null);
+    // boss
+    if (ga.boss && gb.boss && ga.boss.alive && gb.boss.alive) {
+      out.boss = { ...gb.boss, ...lerpObj(ga.boss, gb.boss, t, ["x","y","hp","shieldLeft"]) };
+    } else {
+      out.boss = gb.boss ?? ga.boss ?? null;
+    }
 
     return out;
   }
@@ -677,8 +720,8 @@
     if (my) {
       const colorLabel = my.color === "red" ? "RED" : "BLUE";
       ui.hudLine1.textContent = `YOU: ${colorLabel} | SCORE: ${my.score} | WAVE: ${g.wave}`;
-      ui.hudLine2.textContent = `連射OK`;
-      ui.hudLine3.textContent = `A/D移動 Space連射 | 生存: ${my.alive ? "YES" : "NO"}`;
+      ui.hudLine2.textContent = "Space 連射（クールタイムなし）";
+      ui.hudLine3.textContent = `A/D移動 | 生存: ${my.alive ? "YES" : "NO"}`;
       ui.youTag.textContent = `YOU:${colorLabel}`;
     } else {
       ui.hudLine1.textContent = `WAVE: ${g.wave} elapsed:${g.elapsed ?? "?"}`;
@@ -761,78 +804,25 @@
     ui.hud.style.display = "none";
   }
 
-  // smooth render loop (interpolated)
+  // Smooth render loop (60fps) using interpolation buffer
   function startRenderLoop(myUid) {
-    function frame(t) {
-      const g = buildInterpolatedSnapshot(performance.now());
+    function frame() {
+      const g = buildInterpolatedGame(Date.now());
       if (g) drawState(g, myUid);
       requestAnimationFrame(frame);
     }
     requestAnimationFrame(frame);
   }
 
-  // ---------------- Input sender ----------------
-  function bindInputSenderForRoom(userId, roomId, getIsPlayerFn) {
-    const keys = { left:false, right:false, shoot:false };
-    let bound = true;
+  // ---------------- Game rules changes: rapid fire ----------------
+  // "クールタイム削除" but avoid breaking the game: add small fire interval (e.g., 0.12s) to prevent infinite bullets.
+  // If you truly want 0, set FIRE_INTERVAL = 0, but DB load will grow. 0.12s feels like rapid-fire.
+  const FIRE_INTERVAL = 0.12; // seconds per shot (about 8.3 shots/sec)
 
-    const down = (e) => {
-      if (!bound) return;
-      if (e.code === "KeyA") keys.left = true;
-      if (e.code === "KeyD") keys.right = true;
-      if (e.code === "Space") { keys.shoot = true; e.preventDefault(); }
-    };
-    const up = (e) => {
-      if (!bound) return;
-      if (e.code === "KeyA") keys.left = false;
-      if (e.code === "KeyD") keys.right = false;
-      if (e.code === "Space") { keys.shoot = false; e.preventDefault(); }
-    };
-    window.addEventListener("keydown", down);
-    window.addEventListener("keyup", up);
+  // ---------------- Game simulation constants ----------------
+  const clamp2 = (v,a,b)=>Math.max(a,Math.min(b,v));
 
-    const timer = setInterval(() => {
-      if (!bound) return;
-      if (!roomId) return;
-      if (!getIsPlayerFn()) return;
-      set(ref(db, PATHS.roomInputs(roomId, userId)), { ...keys, t: Date.now() });
-    }, 50);
-
-    return () => {
-      bound = false;
-      clearInterval(timer);
-      window.removeEventListener("keydown", down);
-      window.removeEventListener("keyup", up);
-    };
-  }
-
-  // ---------------- Game simulation (host) ----------------
-  // ★変更：連射（クールタイム削除） -> FIRE_RATE で制御
-  const FIRE_RATE = 10; // shots per second
-  const FIRE_INTERVAL = 1 / FIRE_RATE;
-
-  const ENEMY = {
-    A: { firePerSec: 0.12, bulletSpeed: 0.28, moveSpeed: 0.06 },
-    B: { firePerSec: 0.18, bulletSpeed: 0.32, moveSpeed: 0.09 },
-    C: { firePerSec: 0.14, bulletSpeed: 0.26, moveSpeed: 0.06, homingTime: 0.7, turnRate: 2.2 },
-    E: { firePerSec: 0.45, bulletSpeed: 0.36 },
-    D: { fallSpeed: 0.10 }
-  };
-  const BOSS = {
-    hpMax: 40,
-    x: 0.5,
-    y: 0.16,
-    baseBulletSpeed: 0.33,
-    shieldEvery: 9.0,
-    shieldDuration: 1.8,
-    moveSpeed: 0.18
-  };
-  const clamp = (v,a,b)=>Math.max(a,Math.min(b,v));
-  const normalizeAngle=(a)=>{while(a>Math.PI)a-=Math.PI*2;while(a<-Math.PI)a+=Math.PI*2;return a;};
-  const mulberry32=(a)=>()=>{let t=a+=0x6D2B79F5;t=Math.imul(t^(t>>>15),t|1);t^=t+Math.imul(t^(t>>>7),t|61);return((t^(t>>>14))>>>0)/4294967296;};
-  const randChoice=(rng,arr)=>arr[Math.floor(rng()*arr.length)];
-  const bossPhase = (b)=> b.hp>30?1:b.hp>20?2:b.hp>10?3:4;
-
+  // ---------------- Host simulation (modified: no cooldown, use fire interval accumulator) ----------------
   function createHostSim(room) {
     const p1Uid = room.p1Uid;
     const p2Uid = room.p2Uid;
@@ -863,11 +853,8 @@
       rng
     };
 
-    const mkPlayer = (playerUid, color, x) => ({
-      uid: playerUid, color, x, y: 0.9, alive: true, score: 0,
-      fireAcc: 0 // ★連射用
-    });
-
+    // shootCooldown kept only for compatibility (HUD/old fields) but always 0 now
+    const mkPlayer = (playerUid, color, x) => ({ uid: playerUid, color, x, y: 0.9, alive: true, score: 0, shootCooldown: 0, fireAcc: 0 });
     st.players[p1Uid] = mkPlayer(p1Uid, "blue", 0.45);
     if (p2Uid) st.players[p2Uid] = mkPlayer(p2Uid, "red", 0.55);
 
@@ -999,7 +986,7 @@
             const cur=Math.atan2(b.vy,b.vx);
             const diff=normalizeAngle(desired-cur);
             const maxTurn=2.2*dt;
-            const turned=cur+clamp(diff,-maxTurn,maxTurn);
+            const turned=cur+clamp2(diff,-maxTurn,maxTurn)+cur;
             const spd=Math.hypot(b.vx,b.vy);
             b.vx=Math.cos(turned)*spd;
             b.vy=Math.sin(turned)*spd;
@@ -1030,7 +1017,7 @@
             st.enemyBullets.push({ x:e.x,y:e.y, vx:Math.cos(ang)*spd, vy:Math.sin(ang)*spd, type:"C_HOMING", homingLeft:cfg.homingTime, dead:false });
           } else {
             const t=pickAlivePlayer();
-            const aim=t?clamp((t.x-e.x)*1.2,-0.25,0.25):0;
+            const aim=t?clamp2((t.x-e.x)*1.2,-0.25,0.25):0;
             st.enemyBullets.push({ x:e.x,y:e.y, vx:aim, vy:cfg.bulletSpeed, type:`${e.type}_SHOT`, dead:false });
           }
         }
@@ -1076,7 +1063,6 @@
       }
     }
 
-    // boss patterns (unchanged)
     function doBossAttack(phase, enrage) {
       const patterns = [pRing, pRightSide];
       if (phase>=2) patterns.push(pSnipe, pSplit);
@@ -1186,7 +1172,7 @@
         if (boss.x>0.88){ boss.x=0.88; boss.dashDir=-1; }
       } else {
         boss.x += Math.sin(boss.time*0.9)*0.06*dt;
-        boss.x = clamp(boss.x,0.12,0.88);
+        boss.x = clamp2(boss.x,0.12,0.88);
       }
 
       boss.shieldAcc += dt;
@@ -1218,6 +1204,7 @@
           b.dead = true;
           if (boss.shieldLeft>0) continue;
           boss.hp -= 1;
+          const p=st.players[b.ownerUid]; if (p) p.score += SCORE.BOSS_HIT;
           if (boss.hp<=0) boss.alive = false;
         }
       }
@@ -1252,7 +1239,7 @@
 
       if (newWave !== st.wave) { st.wave = newWave; spawnWave(newWave); }
 
-      // players
+      // players move + rapid fire
       for (const puid in st.players) {
         const p=st.players[puid];
         if (!p.alive) continue;
@@ -1260,17 +1247,18 @@
         const speed=0.45;
         if (inp.left) p.x -= speed*dt;
         if (inp.right) p.x += speed*dt;
-        p.x = clamp(p.x, 0.05, 0.95);
+        p.x = clamp2(p.x, 0.05, 0.95);
 
-        // ★連射：押しっぱでaccを貯めて弾を吐く
+        // rapid fire: accumulate while holding shoot
+        p.shootCooldown = 0; // keep always 0
         if (inp.shoot) {
-          p.fireAcc += dt;
+          p.fireAcc = (p.fireAcc ?? 0) + dt;
           while (p.fireAcc >= FIRE_INTERVAL) {
             p.fireAcc -= FIRE_INTERVAL;
             st.playerBullets.push({ x:p.x, y:p.y-0.03, ownerUid:puid });
           }
         } else {
-          // 離したらaccリセット（押した瞬間から気持ちよく）
+          // if released, reset accumulator slightly to avoid burst on re-press
           p.fireAcc = 0;
         }
       }
@@ -1305,19 +1293,12 @@
 
       movePlayerBullets(dt);
       st.playerBullets = st.playerBullets.filter(b=>!b.dead);
-
-      // wave3 hazard collisions
-      if (st.wave<=3) collideHazardsToPlayers();
-
-      // note: in wave<=3 we already called collideHazardsToPlayers above; harmless duplication avoided by placing once:
-      // (上で呼んでるのでここは不要。ただ既存を壊さないため残さず、上側にまとめたままにしてある)
     }
 
     function snapshot() {
       const playersArr = Object.values(st.players).map(p=>({
         uid:p.uid, x:p.x, y:p.y, alive:p.alive, score:p.score, color:p.color,
-        // ★互換のため出す（UI側が参照しても壊れない）
-        shootCooldown: 0
+        shootCooldown: 0 // always 0
       }));
       const boss = st.boss ? {
         x:st.boss.x, y:st.boss.y, alive:st.boss.alive,
@@ -1371,6 +1352,7 @@
     if (st === "finished") return "finished";
     return "";
   }
+
   function roomStateLabel(st) {
     if (st === "recruiting") return "募集中";
     if (st === "preparing") return "準備中";
@@ -1378,6 +1360,7 @@
     if (st === "finished") return "終了";
     return "待機";
   }
+
   function isPlayer(room) {
     return room?.p1Uid === state.userId || room?.p2Uid === state.userId;
   }
@@ -1393,13 +1376,16 @@
     if (state.gameUnsub) { state.gameUnsub(); state.gameUnsub = null; }
 
     state.roomId = null;
+    state.lastRoom = null;
+
     ui.roomTag.style.display = "none";
     ui.roomTag.textContent = "room:-";
     ui.readyBtn.style.display = "none";
     ui.retireBtn.style.display = "none";
 
+    snapBuf.length = 0;
     latestSnap = null;
-    net.prev = null; net.curr = null;
+
     if (goLobby) setScreen("lobby");
   }
 
@@ -1521,6 +1507,7 @@
     });
   }
 
+  // ---------------- Subscribe room + host loop ----------------
   const activeHostLoops = new Map(); // roomId -> timer
 
   function subscribeRoom(roomId) {
@@ -1535,8 +1522,8 @@
       state.lastRoom = room;
 
       if (!room) {
+        snapBuf.length = 0;
         latestSnap = null;
-        net.prev = null; net.curr = null;
         drawIdle("部屋が削除されました");
         await leaveRoom(true);
         return;
@@ -1553,7 +1540,7 @@
 
       if (room.state === "recruiting" && room.mode === "multi") {
         if (!player && !room.recruiting?.joinerUid && !room.p2Uid) {
-          const ok = await modalAsk("この部屋のマルチに参加しますか？", "最初にOK���た1人だけ参加できます");
+          const ok = await modalAsk("この部屋のマルチに参加しますか？", "最初にOKした1人だけ参加できます");
           if (ok) {
             const joinerRef = ref(db, PATHS.roomRecruitJoiner(roomId));
             const tx = await runTransaction(joinerRef, (cur) => (cur ? undefined : state.userId));
@@ -1599,7 +1586,7 @@
     state.gameUnsub = onValue(gameRef, (snap) => {
       const g = snap.val() || null;
       latestSnap = g;
-      if (g) ingestSnapshot(g);
+      if (g) pushSnapshot(g);
       else drawIdle("準備中 / 観戦待機中");
     });
   }

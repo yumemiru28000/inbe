@@ -360,7 +360,62 @@
     roomReady: (roomId, uid) => `rooms/${roomId}/ready/${uid}`,
   };
 
+
+
+
+
+  
+
+// ==== サウンド管理 ====
+const SE = {
+  pi: document.getElementById("se-pi"),
+  si: document.getElementById("se-si"),
+  gl: document.getElementById("se-gl"),
+};
+const BGM = [
+  document.getElementById("bgm-w1"),
+  document.getElementById("bgm-w2"),
+  document.getElementById("bgm-w3"),
+  document.getElementById("bgm-w4"),
+];
+let currentBGM = null;
+
+function playSE(name) {
+  const aud = SE[name];
+  if (aud) { aud.currentTime = 0; aud.play(); }
+}
+function playBGMforWave(wave) {
+  stopBGM();
+  const idx = (wave-1);
+  if (BGM[idx]) {
+    currentBGM = BGM[idx];
+    currentBGM.currentTime = 0;
+    currentBGM.play();
+  }
+}
+function stopBGM() {
+  if (currentBGM) {
+    currentBGM.pause();
+    currentBGM.currentTime = 0;
+    currentBGM = null;
+  }
+}
+
+
+
+
+
+
+
+
+
+
+
+  
+  
   const $ = (q) => document.querySelector(q);
+
+  
   const ui = {
     me: $("#me"),
     adminTag: $("#adminTag"),
@@ -940,6 +995,7 @@
 
       st.waveDelayLeft = WAVE_START_DELAY; // ★追加：wave切替のたびに5秒待つ
       cleanupOutOfBounds();
+       playBGMforWave(w);
     }
     spawnWave(1);
 
@@ -1068,33 +1124,39 @@
       }
     }
 
-    function collidePlayerBulletsToEnemies() {
-      for (const b of st.playerBullets) {
-        if (b.dead) continue;
-        for (const e of st.enemies) {
-          if (!e.alive) continue;
-          const dx=e.x-b.x, dy=e.y-b.y;
-          if (dx*dx+dy*dy<0.00085) {
-            e.alive=false; b.dead=true;
-            const p=st.players[b.ownerUid]; if (p) p.score += (SCORE[e.type]??0);
-            break;
-          }
-        }
+function collidePlayerBulletsToEnemies() {
+  for (const b of st.playerBullets) {
+    if (b.dead) continue;
+    for (const e of st.enemies) {
+      if (!e.alive) continue;
+      const dx=e.x-b.x, dy=e.y-b.y;
+      if (dx*dx+dy*dy<0.00085) {
+        e.alive = false; b.dead = true;
+        const p = st.players[b.ownerUid]; // ←弾を撃った人
+        if (p && p.uid === p1Uid) playSE("gl"); // ★ここ！
+        break;
       }
-      st.enemies = st.enemies.filter(e=>e.alive);
     }
+  }
+  st.enemies = st.enemies.filter(e=>e.alive);
+}
 
-    function collideHazardsToPlayers() {
-      for (const h of st.hazards) {
-        if (!h.alive) continue;
-        for (const puid in st.players) {
-          const p=st.players[puid]; if(!p.alive) continue;
-          const dx=p.x-h.x, dy=p.y-h.y;
-          if (dx*dx+dy*dy<0.0016) { p.alive=false; h.alive=false; break; }
-        }
+  function collideHazardsToPlayers() {
+  for (const h of st.hazards) {
+    if (!h.alive) continue;
+    for (const puid in st.players) {
+      const p = st.players[puid]; if (!p.alive) continue;
+      const dx = p.x - h.x, dy = p.y - h.y;
+      if (dx*dx+dy*dy<0.0016) {
+        p.alive = false;
+        if (p.uid === p1Uid) playSE("si"); // ★ここに追記
+        h.alive = false;
+        break;
       }
-      st.hazards = st.hazards.filter(h=>h.alive);
     }
+  }
+  st.hazards = st.hazards.filter(h=>h.alive);
+}
 
     function collideEnemyBulletsToPlayers() {
       for (const b of st.enemyBullets) {
@@ -1275,6 +1337,17 @@
         st.waveDelayLeft = Math.max(0, st.waveDelayLeft - dt);
         // 入力でプレイヤー位置だけ動かすかは好み。ここでは止める（完全停止）
         return;
+
+//☆
+        if (inp.shoot) {
+  p.fireAcc += FIRE_RATE * dt;
+  while (p.fireAcc >= 1) {
+    p.fireAcc -= 1;
+    st.playerBullets.push({ id:`pb_${st.nextPBulletId++}`, x:p.x, y:p.y-0.03, ownerUid:puid, dead:false });
+    // --- ここで弾を撃った瞬間に
+    if (puid === p1Uid) playSE("pi");
+  }
+}
       }
 
       st.elapsed += dt;
@@ -1399,6 +1472,7 @@
   }
 
   async function leaveRoom(goLobby = true) {
+     stopBGM(); // ★この関数の一番最初でOK
     if (state.stopInput) { state.stopInput(); state.stopInput = null; }
     if (state.roomUnsub) { state.roomUnsub(); state.roomUnsub = null; }
     if (state.gameUnsub) { state.gameUnsub(); state.gameUnsub = null; }
@@ -1740,5 +1814,16 @@
     };
   });
 </script>
+
+  
+
+<audio id="se-pi" src="pi.mp3" preload="auto"></audio>
+<audio id="se-si" src="si.mp3" preload="auto"></audio>
+<audio id="se-gl" src="gl.mp3" preload="auto"></audio>
+<audio id="bgm-w1" src="w1.mp3" preload="auto" loop></audio>
+<audio id="bgm-w2" src="w2.mp3" preload="auto" loop></audio>
+<audio id="bgm-w3" src="w3.mp3" preload="auto" loop></audio>
+<audio id="bgm-w4" src="w4.mp3" preload="auto" loop></audio>
+  
 </body>
 </html>

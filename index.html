@@ -195,125 +195,168 @@
     <div id="statusLine"></div>
   </header>
 
-  <section id="nameScreen" class="screen active">
-    <div class="wrap">
-      <div class="panel card">
-        <div class="logo">INVADER</div>
-        <h1>名前を入力</h1>
-        <p class="muted" style="margin:0 0 12px 0;">最初に1回だけ必要です（後で変更可）。</p>
-        <input id="nameInput" placeholder="表示名（20文字まで）" maxlength="20" />
-        <div class="row" style="margin-top:12px; justify-content:flex-end;">
-          <button id="saveNameBtn">決定</button>
+<section id="nameScreen" class="screen active">
+  <div class="wrap">
+    <div class="panel card">
+      <div class="logo">INVADER</div>
+      <h1>名前を入力 / 输入名字</h1>
+      <p class="muted" style="margin:0 0 12px 0;">
+        最初に1回だけ必要です（後で変更可）。/ 仅首次需要（之后可更改）。
+      </p>
+      <input
+        id="nameInput"
+        placeholder="表示名（20文字まで） / 显示名称（最多20个字符）"
+        maxlength="20"
+      />
+      <div class="row" style="margin-top:12px; justify-content:flex-end;">
+        <button id="saveNameBtn">決定 / 确定</button>
+      </div>
+      <div class="muted" id="nameHint" style="margin-top:10px;"></div>
+    </div>
+  </div>
+</section>
+
+<section id="lobbyScreen" class="screen">
+  <div id="lobbyMain">
+    <div class="col">
+      <div class="card">
+        <div style="font-weight:1000; font-size:18px; letter-spacing:.4px;">
+          ロビー / 大厅
         </div>
-        <div class="muted" id="nameHint" style="margin-top:10px;"></div>
+        <div class="muted" style="margin-top:8px; line-height:1.6;">
+          操作：<b>A/D</b> 移動、<b>Space</b> 連射（CDなし）<br/>
+          操作：<b>A/D</b> 移动，<b>Space</b> 连射（无冷却）<br/>
+          Wave：30/40/90/140秒（以降ボス継続・激化）<br/>
+          波次：30/40/90/140秒（之后Boss持续并强化）<br/>
+          終了：全員死亡 / ホストリタイア / 7分経過（強制終了）<br/>
+          结束：全员死亡 / 房主退场 / 7分钟经过（强制结束）
+        </div>
+
+        <div class="row" style="margin-top:12px;">
+          <button id="createSoloBtn">ソロ部屋 / 单人房间</button>
+          <button id="createMultiBtn" style="display:none;">
+            マルチ部屋 / 多人房间
+          </button>
+        </div>
+        <div class="muted" id="createHint" style="margin-top:10px;"></div>
+
+        <div class="row" style="margin-top:14px; justify-content:space-between;">
+          <button id="changeNameBtn" class="ghost">
+            名前を変更 / 修改名字
+          </button>
+          <span class="muted" id="myNameLabel"></span>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="row" style="justify-content:space-between;">
+          <div class="muted" style="font-weight:900;">
+            運営 / 管理
+          </div>
+          <div class="tag muted">pw 1122</div>
+        </div>
+        <div class="row" style="margin-top:10px;">
+          <input
+            id="adminPw"
+            placeholder="1122"
+            inputmode="numeric"
+            maxlength="8"
+            style="width:120px; padding:8px 10px; font-size:13px;"
+          />
+          <button id="adminEnterBtn" class="secondary small">
+            決定 / 确定
+          </button>
+          <button id="adminExitBtn" class="ghost small" style="display:none;">
+            解除 / 取消
+          </button>
+        </div>
+        <div class="muted" style="margin-top:8px; font-size:12px;">
+          運営はこの端末だけ（ローカル）で有効になります。<br/>
+          管理权限仅在此设备（本地）生效。
+        </div>
       </div>
     </div>
-  </section>
 
-  <section id="lobbyScreen" class="screen">
-    <div id="lobbyMain">
-      <div class="col">
-        <div class="card">
-          <div style="font-weight:1000; font-size:18px; letter-spacing:.4px;">ロビー</div>
-          <div class="muted" style="margin-top:8px; line-height:1.6;">
-            操作：<b>A/D</b> 移動、<b>Space</b> 連射（CDなし）<br/>
-            Wave：30/40/90/140秒（以降ボス継続・激化）<br/>
-            終了：全員死亡 / ホストリタイア / 7分経過（強制終了）
+    <div class="col">
+      <div class="card">
+        <div class="row" style="justify-content:space-between;">
+          <div style="font-weight:1000; font-size:18px;">
+            部屋一覧 / 房间列表
           </div>
-
-          <div class="row" style="margin-top:12px;">
-            <button id="createSoloBtn">ソロ部屋</button>
-            <button id="createMultiBtn" style="display:none;">マルチ部屋</button>
-          </div>
-          <div class="muted" id="createHint" style="margin-top:10px;"></div>
-
-          <div class="row" style="margin-top:14px; justify-content:space-between;">
-            <button id="changeNameBtn" class="ghost">名前を変更</button>
-            <span class="muted" id="myNameLabel"></span>
-          </div>
+          <span class="tag">最大5 / 最多5</span>
         </div>
-
-        <div class="card">
-          <div class="row" style="justify-content:space-between;">
-            <div class="muted" style="font-weight:900;">運営</div>
-            <div class="tag muted">pw 1122</div>
-          </div>
-          <div class="row" style="margin-top:10px;">
-            <input id="adminPw" placeholder="1122" inputmode="numeric" maxlength="8" style="width:120px; padding:8px 10px; font-size:13px;" />
-            <button id="adminEnterBtn" class="secondary small">決定</button>
-            <button id="adminExitBtn" class="ghost small" style="display:none;">解除</button>
-          </div>
-          <div class="muted" style="margin-top:8px; font-size:12px;">
-            運営はこの端末だけ（ローカル）で有効になります。
-          </div>
+        <div class="muted" style="margin-top:6px;">
+          ソロ専用（マルチ機能は削除済み）<br/>
+          仅限单人（多人功能已移除）
         </div>
-      </div>
-
-      <div class="col">
-        <div class="card">
-          <div class="row" style="justify-content:space-between;">
-            <div style="font-weight:1000; font-size:18px;">部屋一覧</div>
-            <span class="tag">最大5</span>
-          </div>
-          <div class="muted" style="margin-top:6px;">
-            ソロ専用（マルチ機能は削除済み）
-          </div>
-          <div id="roomsList" style="margin-top:12px;"></div>
-        </div>
-      </div>
-
-      <div class="col">
-        <div class="card">
-          <div class="row" style="justify-content:space-between;">
-            <div class="muted" style="font-weight:1000;">ランキング（上位）</div>
-            <span class="tag">Realtime</span>
-          </div>
-          <div id="leaderboard" style="margin-top:10px;"></div>
-        </div>
+        <div id="roomsList" style="margin-top:12px;"></div>
       </div>
     </div>
-  </section>
 
-  <section id="gameScreen" class="screen">
-    <div id="gameWrap">
-      <div id="gameTopBar">
-        <span class="tag" id="screenTitle">GAME</span>
-        <span class="tag" id="youTag">YOU:-</span>
-        <span class="tag" id="modeTag">mode:-</span>
-        <span class="tag" id="stateTag">state:-</span>
-        <div class="spacer"></div>
-        <button id="readyBtn" class="secondary" style="display:none;">準備完了</button>
-        <button id="retireBtn" class="danger" style="display:none;">リタイア（ホスト）</button>
-        <button id="leaveRoomBtn" class="secondary">部屋を出る</button>
-      </div>
-
-      <div id="canvasArea">
-        <div id="stage">
-          <canvas id="game"></canvas>
-
-          <div id="hud" style="display:none;">
-            <div id="hudLine1"></div>
-            <div id="hudLine2" style="margin-top:4px;"></div>
-            <div id="hudLine3" class="muted" style="margin-top:6px;"></div>
+    <div class="col">
+      <div class="card">
+        <div class="row" style="justify-content:space-between;">
+          <div class="muted" style="font-weight:1000;">
+            ランキング（上位） / 排行榜（前列）
           </div>
+          <span class="tag">Realtime</span>
+        </div>
+        <div id="leaderboard" style="margin-top:10px;"></div>
+      </div>
+    </div>
+  </div>
+</section>
 
-          <div id="waveBanner">
-            <div class="inner">
-              <div class="title" id="waveBannerTitle">WAVE 1/4</div>
-              <div class="sub" id="waveBannerSub">5秒後に開始</div>
+<section id="gameScreen" class="screen">
+  <div id="gameWrap">
+    <div id="gameTopBar">
+      <span class="tag" id="screenTitle">GAME</span>
+      <span class="tag" id="youTag">YOU:-</span>
+      <span class="tag" id="modeTag">mode:-</span>
+      <span class="tag" id="stateTag">state:-</span>
+      <div class="spacer"></div>
+      <button id="readyBtn" class="secondary" style="display:none;">
+        準備完了 / 准备完成
+      </button>
+      <button id="retireBtn" class="danger" style="display:none;">
+        リタイア（ホスト） / 退场（房主）
+      </button>
+      <button id="leaveRoomBtn" class="secondary">
+        部屋を出る / 离开房间
+      </button>
+    </div>
+
+    <div id="canvasArea">
+      <div id="stage">
+        <canvas id="game"></canvas>
+
+        <div id="hud" style="display:none;">
+          <div id="hudLine1"></div>
+          <div id="hudLine2" style="margin-top:4px;"></div>
+          <div id="hudLine3" class="muted" style="margin-top:6px;"></div>
+        </div>
+
+        <div id="waveBanner">
+          <div class="inner">
+            <div class="title" id="waveBannerTitle">
+              WAVE 1/4
+            </div>
+            <div class="sub" id="waveBannerSub">
+              5秒後に開始 / 5秒后开始
             </div>
           </div>
+        </div>
 
-          <div id="ann">
-            <div class="card">
-              <div style="font-weight:1000; margin-bottom:6px;" id="annTitle"></div>
-              <div class="muted" id="annBody"></div>
-            </div>
+        <div id="ann">
+          <div class="card">
+            <div style="font-weight:1000; margin-bottom:6px;" id="annTitle"></div>
+            <div class="muted" id="annBody"></div>
           </div>
         </div>
       </div>
     </div>
-  </section>
+  </div>
+</section>
 </div>
 
 <div id="modal">
@@ -321,11 +364,16 @@
     <div style="font-weight:1000; margin-bottom:6px;" id="modalTitle"></div>
     <div class="muted" style="margin-bottom:10px;" id="modalBody"></div>
     <div class="row">
-      <button id="modalNo" class="secondary">いいえ</button>
-      <button id="modalYes">はい</button>
+      <button id="modalNo" class="secondary">
+        いいえ / 否
+      </button>
+      <button id="modalYes">
+        はい / 是
+      </button>
     </div>
   </div>
 </div>
+
 
 <script type="module">
   import { initializeApp } from "https://www.gstatic.com/firebasejs/12.8.0/firebase-app.js";
